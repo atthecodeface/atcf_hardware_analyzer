@@ -19,8 +19,8 @@
 
 /*a Includes
  */
-include "types/analyzer.h"
-include "analyzer/analyzer_modules.h"
+include "analyzer.h"
+include "analyzer_modules.h"
 
 /*a Module
  */

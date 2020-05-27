@@ -19,7 +19,7 @@
 
 /*a Includes
  */
-include "types/analyzer.h"
+include "analyzer.h"
 
 /*a Types
 */
