@@ -29,5 +29,8 @@ class ApbTargetModules(cdl_desc.Modules):
     export_dirs = cdl_include_dirs + [ src_dir ]
     modules = []
     modules += [ CdlModule("apb_target_analyzer") ]
+    modules += [ CdlModule("apb_target_analyzer_ctl") ]
+    modules += [ CdlModule("tb_analyzer_ctl",
+                            src_dir=tb_src_dir) ]
     pass
 

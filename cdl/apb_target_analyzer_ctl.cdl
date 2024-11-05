@@ -1,0 +1,254 @@
+/*a Includes
+ */
+include "apb::apb.h"
+include "analyzer.h"
+include "std::srams.h"
+
+/*a Types */
+/*t t_apb_address
+ * APB address map, used to decode paddr
+ */
+typedef enum [4] {
+    apb_address_config      = 0,
+    apb_address_select      = 1,
+    apb_address_select_at   = 2,
+    apb_address_write_data  = 3,
+} t_apb_address;
+
+/*t t_access
+ * APB access that is in progress; a decode of psel and paddr
+ */
+typedef enum [3] {
+    access_none            "No access being performed",
+    access_write_data      "Write data to selected node(s)",
+    access_read_status     "Read status",
+    access_select          "Select all or no endpoints",
+    access_select_at       "Select *one* endpoint",
+} t_access;
+
+/*t t_actl_op
+ * APB control op
+ */
+typedef enum [3] {
+    actl_op_none,
+    actl_op_clear_enable,
+    actl_op_select,
+    actl_op_select_all,
+    actl_op_select_none,
+    actl_op_write_data,
+} t_actl_op;
+
+/*t t_apb_combs */
+typedef struct {
+    t_actl_op actl_op;
+    bit[32] data;
+} t_apb_combs;
+
+/*t t_actl_fsm_state
+ */
+typedef fsm {
+    actl_fsm_idle;
+    actl_fsm_select_at;
+    actl_fsm_select_run_all;
+    actl_fsm_select_run_clear;
+    actl_fsm_write_data;
+    actl_fsm_completed;
+} t_actl_fsm_state;
+
+/*t t_apb_state */
+typedef struct {
+    t_access access;
+} t_apb_state;
+
+/*t t_actl_state */
+typedef struct {
+    t_actl_fsm_state fsm_state;
+    t_analyzer_mst mst;
+    t_analyzer_tgt tgt;
+    bit[32] count;
+    bit completed;
+} t_actl_state;
+
+/*a Module
+ */
+module apb_target_analyzer_ctl( clock clk,
+                                input bit reset_n,
+
+                                input  t_apb_request  apb_request  "APB request",
+                                output t_apb_response apb_response "APB response",
+
+                                output  t_analyzer_mst  analyzer_mst,
+                                input t_analyzer_tgt  analyzer_tgt "Data not used"
+
+    )
+"""
+"""
+
+{
+    /*b Default clock and reset
+     */
+    default clock clk;
+    default reset active_low reset_n;
+
+    /*b Outputs for the async trace read interface
+     */
+    clocked t_apb_state apb_state = {*=0};
+    comb t_apb_combs apb_combs;
+    clocked t_actl_state actl_state = {*=0};
+
+    /*b APB interface
+     */
+    apb_interface "APB interface": {
+
+        /*b Handle APB read data - may affect pready */
+        apb_response = {*=0, pready=1};
+        part_switch (apb_state.access) {
+        case access_read_status: {
+            apb_response.prdata[24;0] = actl_state.count[24;0];
+            apb_response.prdata[31] = actl_state.completed;
+        }
+        }
+
+        /*b Decode access */
+        apb_state.access <= access_none;
+        part_switch (apb_request.paddr[4;0]) {
+        case apb_address_config: {
+            apb_state.access <= apb_request.pwrite ? access_none : access_read_status;
+        }
+        case apb_address_select: {
+            apb_state.access <= apb_request.pwrite ? access_select : access_none;
+        }
+        case apb_address_select_at: {
+            apb_state.access <= apb_request.pwrite ? access_select_at : access_none;
+        }
+        case apb_address_write_data: {
+            apb_state.access <= apb_request.pwrite ? access_write_data : access_none;
+        }
+        }
+        if (!apb_request.psel || (apb_request.penable && apb_response.pready)) {
+            apb_state.access <= access_none;
+        }
+
+        /*b Decode the actl_op
+         */
+        apb_combs.actl_op = actl_op_none;
+        apb_combs.data = apb_request.pwdata;
+        full_switch (apb_state.access) {
+        case access_select_at: {
+            apb_combs.actl_op = actl_op_select;
+        }
+        case access_select: {
+            apb_combs.actl_op = actl_op_select_all;
+            if (apb_request.pwdata == 0) {
+                apb_combs.actl_op = actl_op_select_none;
+            } elsif (apb_request.pwdata[31]) {
+                apb_combs.actl_op = actl_op_clear_enable;
+            }
+        }
+        case access_write_data: {
+            apb_combs.actl_op = actl_op_write_data;
+        }
+        default: {
+            apb_combs.actl_op = actl_op_none;
+        }
+        }
+    }
+
+    /*b Analyzer control FSM
+     */
+    analyzer_control_fsm "Analyzer control FSM logic": {
+        full_switch (actl_state.fsm_state) {
+        case actl_fsm_idle: {
+            full_switch (apb_combs.actl_op) {
+            case actl_op_select: {
+                actl_state.fsm_state <= actl_fsm_select_at;
+                actl_state.completed <= 0;
+                actl_state.mst.select <= 0;
+                actl_state.mst.enable <= 0;
+                actl_state.count <= apb_combs.data;
+                actl_state.tgt <= analyzer_tgt;
+            }
+            case actl_op_clear_enable: {
+                actl_state.fsm_state <= actl_fsm_select_run_clear;
+                actl_state.count <= 0;
+                actl_state.completed <= 0;
+                actl_state.mst.select <= 0;
+                actl_state.mst.enable <= 0;
+                actl_state.tgt <= analyzer_tgt;
+            }
+            case actl_op_select_all: {
+                actl_state.fsm_state <= actl_fsm_select_run_all;
+                actl_state.count <= 0;
+                actl_state.completed <= 0;
+                actl_state.mst.select <= 1;
+                actl_state.mst.enable <= 0;
+                actl_state.tgt <= analyzer_tgt;
+            }
+            case actl_op_select_none: {
+                actl_state.fsm_state <= actl_fsm_select_run_all;
+                actl_state.count <= 0;
+                actl_state.completed <= 0;
+                actl_state.mst.select <= 0;
+                actl_state.mst.enable <= 0;
+                actl_state.tgt <= analyzer_tgt;
+            }
+            case actl_op_write_data: {
+                actl_state.fsm_state <= actl_fsm_write_data;
+                actl_state.completed <= 0;
+                actl_state.mst.valid <= 1;
+                actl_state.mst.data <= apb_combs.data[4;0];
+                actl_state.count <= bundle(4b0, apb_combs.data[28;4]);
+                actl_state.tgt <= analyzer_tgt;
+            }
+        }
+        }
+        case actl_fsm_select_at: {
+            actl_state.tgt <= analyzer_tgt;
+            actl_state.mst.enable <= 1;
+            actl_state.mst.select <= 0;
+            if (actl_state.count == 0) {
+                actl_state.mst.select <= 1;
+            }
+            if (actl_state.tgt.enable_return) {
+                actl_state.fsm_state <= actl_fsm_completed;
+            }
+            actl_state.count <= actl_state.count - 1;
+        }
+        case actl_fsm_select_run_all: {
+            actl_state.tgt <= analyzer_tgt;
+            actl_state.mst.enable <= 1;
+            if (actl_state.tgt.enable_return) {
+                actl_state.fsm_state <= actl_fsm_completed;
+            }
+            actl_state.count <= actl_state.count + 1;
+        }
+        case actl_fsm_select_run_clear: {
+            actl_state.tgt <= analyzer_tgt;
+            actl_state.mst.enable <= 0;
+            if (!actl_state.tgt.enable_return) {
+                actl_state.fsm_state <= actl_fsm_completed;
+            }
+            actl_state.count <= actl_state.count + 1;
+        }
+        case actl_fsm_write_data: {
+            actl_state.tgt <= analyzer_tgt;
+            actl_state.mst.valid <= 1;
+            actl_state.mst.data <= actl_state.count[4;0];
+            if (actl_state.count == 0) {
+                actl_state.fsm_state <= actl_fsm_completed;
+                actl_state.mst.valid <= 0;
+            }
+            actl_state.count <= bundle(4b0, actl_state.count[28;4]);
+        }
+        case actl_fsm_completed: {
+            actl_state.fsm_state <= actl_fsm_idle;
+            actl_state.completed <= 1;
+        }
+        }            
+
+        analyzer_mst = actl_state.mst;
+    }
+
+    /*b Done
+     */
+}

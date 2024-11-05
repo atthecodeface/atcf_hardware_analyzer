@@ -153,3 +153,20 @@ extern module apb_target_analyzer( clock analyzer_clock,
     timing from rising clock async_trace_read_clock async_trace_valid_out, async_trace_out;
 }
 
+/*m apb_target_analyzer_ctl */
+extern module apb_target_analyzer_ctl( clock clk,
+                                       input bit reset_n,
+
+                                       input  t_apb_request  apb_request  "APB request",
+                                       output t_apb_response apb_response "APB response",
+
+                                       output  t_analyzer_mst  analyzer_mst,
+                                       input t_analyzer_tgt  analyzer_tgt )
+{
+    timing to   rising clock clk apb_request;
+    timing from rising clock clk apb_response;
+
+    timing from rising clock clk analyzer_mst;
+    timing to   rising clock clk analyzer_tgt;
+}
+
