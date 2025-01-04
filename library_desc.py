@@ -16,8 +16,12 @@ class AnalyzerModules(cdl_desc.Modules):
     modules += [ CdlModule("analyzer_mux_2") ]
     modules += [ CdlModule("analyzer_mux_8_e", cdl_filename="analyzer_mux_8", constants={"analyzer_config_num_targets":2}) ]
     modules += [ CdlModule("analyzer_mux_8") ]
+    modules += [ CdlModule("analyzer_trigger_simple_byte") ]
+    modules += [ CdlModule("analyzer_trigger_simple") ]
     modules += [ CdlModule("analyzer_target") ]
     modules += [ CdlModule("analyzer_target_stub") ]
+    modules += [ CdlModule("analyzer_trace_ram") ]
+    modules += [ CdlModule("analyzer_trace_ram_data_path") ]
     pass
 
 class ApbTargetModules(cdl_desc.Modules):
@@ -29,6 +33,7 @@ class ApbTargetModules(cdl_desc.Modules):
     export_dirs = cdl_include_dirs + [ src_dir ]
     modules = []
     modules += [ CdlModule("apb_target_analyzer") ]
+    modules += [ CdlModule("apb_target_simple_analyzer") ]
     modules += [ CdlModule("apb_target_analyzer_ctl") ]
     modules += [ CdlModule("tb_analyzer_ctl",
                             src_dir=tb_src_dir) ]

@@ -170,3 +170,18 @@ extern module apb_target_analyzer_ctl( clock clk,
     timing to   rising clock clk analyzer_tgt;
 }
 
+
+/*m analyzer_trigger_simple_byte
+ */
+extern
+module analyzer_trigger_simple_byte( clock clk,
+                                     input bit reset_n,
+
+                                     input  t_analyzer_data4 din,
+                                     output bit[8] match_conds,
+                                     input  t_analyzer_trigger_cfg_byte trigger_cfg_byte
+    ) {
+    timing to rising clock clk  din;
+    timing from rising clock clk  match_conds;
+    timing to rising clock clk  trigger_cfg_byte;
+}

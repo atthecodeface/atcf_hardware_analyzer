@@ -19,7 +19,7 @@
  *
  */
 
-/*a Types */
+/*a Types for the analyzer bus (ctl and data) */
 /*t t_analyzer_mst - Master interface towards target */
 typedef struct {
     bit    valid  "If asserted, shift in the data to the control registers";
@@ -46,4 +46,126 @@ typedef struct {
     bit     enable;
     bit[32] mux_control "Shifted in from valid/data - cleared when a node becomes selected";
 } t_analyzer_ctl;
+
+/*a Types for the trace */
+/*t t_analyzer_trace_cfg_value
+ */
+typedef struct {
+    bit[24] base;
+    bit[5] shift;
+    bit[5] mask_size;
+    bit max_min;
+} t_analyzer_trace_cfg_value;
+
+/*t t_analyzer_trace_cfg_ofs
+ */
+typedef struct {
+    bit[24] base;
+    bit[5] shift;
+    bit use_data_1;
+    bit no_bkts;
+} t_analyzer_trace_cfg_ofs;
+
+/*t t_analyzer_trace_cfg_fifo
+ */
+typedef struct {
+    bit[2] data_width;
+    bit journal;
+    bit enable_push;
+} t_analyzer_trace_cfg_fifo;
+
+/*t t_analyzer_trace_cfg
+ */
+typedef struct {
+    bit enable;
+    t_analyzer_trace_cfg_value value_0;
+    t_analyzer_trace_cfg_value value_1;
+    t_analyzer_trace_cfg_ofs offset;
+    t_analyzer_trace_cfg_fifo fifo_0;
+    t_analyzer_trace_cfg_fifo fifo_1;
+    bit[2] timer_div;
+} t_analyzer_trace_cfg;
+
+/*t t_analyzer_trigger_cfg_byte
+ */
+typedef struct {
+    bit[2] data_sel;
+    bit[2] byte_sel;
+    bit[8] mask;
+    bit[8] match;
+} t_analyzer_trigger_cfg_byte;
+
+/*t t_analyzer_trigger_cfg_data_action
+ */
+typedef struct {
+    bit[3] cond_0;
+    bit[3] cond_1;
+    bit[3] cond_2;
+    bit[3] cond_3;
+    bit only_if_changing;
+    bit record_time;
+    bit record_data;
+    bit[2] capture_data;
+} t_analyzer_trigger_cfg_data_action;
+
+/*t t_analyzer_trigger_cfg_data_source
+ */
+typedef enum[3] {
+    atc_data_source_timer,
+    atc_data_source_timer_delta,
+    atc_data_source_din_0,
+    atc_data_source_din_1
+} t_analyzer_trigger_cfg_data_source;
+
+/*t t_analyzer_trigger_cfg
+ */
+typedef struct {
+    bit enable;
+    bit[2] timer_div;
+    t_analyzer_trigger_cfg_byte tb_0;    
+    t_analyzer_trigger_cfg_byte tb_1;    
+    t_analyzer_trigger_cfg_byte tb_2;    
+    t_analyzer_trigger_cfg_byte tb_3;    
+    t_analyzer_trigger_cfg_data_action data_action_0;
+    t_analyzer_trigger_cfg_data_action data_action_1;
+    t_analyzer_trigger_cfg_data_source data_source_0;
+    t_analyzer_trigger_cfg_data_source data_source_1;
+} t_analyzer_trigger_cfg;
+
+/*t t_analyzer_data4
+ */
+typedef struct {
+    bit valid;
+    bit[32] data_0;
+    bit[32] data_1;
+    bit[32] data_2;
+    bit[32] data_3;
+} t_analyzer_data4;
+
+/*t t_analyzer_trace_data_op
+ */
+typedef struct {
+    bit capture;
+} t_analyzer_trace_data_op;
+
+/*t t_analyzer_trace_op4
+ *
+ * Currently just a capture bit for each 'port'
+ *
+ */
+typedef struct {
+    bit[4] capture;
+} t_analyzer_trace_op4;
+
+/*t t_analyzer_trace_req
+ */
+typedef struct {
+    bit x;
+} t_analyzer_trace_req;
+
+/*t t_analyzer_trace_resp
+ */
+typedef struct {
+    bit x;
+} t_analyzer_trace_resp;
 
