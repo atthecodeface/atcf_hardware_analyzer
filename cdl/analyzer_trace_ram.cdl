@@ -1,0 +1,323 @@
+/** @copyright (C) 2004-2019,  Gavin J Stark.  All rights reserved.
+ *
+ * @copyright
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0.
+ *   Unless required by applicable law or agreed to in writing, software
+ *   distributed under the License is distributed on an "AS IS" BASIS,
+ *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *   See the License for the specific language governing permissions and
+ *   limitations under the License.
+ *
+ * @file   analyzer_trace_ram.cdl
+ * @brief  A sophisticated logical analyzer trace RAM
+ *
+ * Updated from the Embisi-gip analyzer module
+ *
+ * Takes an analyzer operation in and records it in a pair of 8kB SRAMs
+ *
+ * Can use the SRAM as FIFO or journal, and for histograms/stats
+ *
+ */
+
+/*a Includes
+ */
+include "analyzer.h"
+include "analyzer_trace_ram.h"
+include "utils::fifo_status.h"
+include "clocking::clock_timer.h"
+include "std::srams.h"
+
+/*a Types */
+/*t t_data_value_combs
+ */
+typedef struct
+{
+    bit[32] p0_data_in;
+    bit[33] p0_data_value "Data in minus base";
+
+    bit     p1_data_is_neg;
+    bit[32] p1_data_shf;
+    bit[64] p1_data_mask;
+    bit[32] p1_data_result;
+    bit[32] p1_data_unused;
+} t_data_value_combs;
+
+/*t t_data_value_state
+ */
+typedef struct
+{
+    bit[32] p0_din "Data in registered";
+    bit[33] p1_data_value "Data in minus base";
+    bit[32] p2_data_value;
+} t_data_value_state;
+
+/*t t_data_ofs_combs
+ */
+typedef struct
+{
+    bit[33]    p0_data_offset "Data offset minus base";
+    bit        p0_data_offset_is_neg  "Asserted if data offset < base";
+    bit[32]    p0_data_offset_shf "Data offset minus base shifted right";
+
+    bit[33]    p1_data_offset_bkt_1;
+    bit[33]    p1_data_offset_bkt_2;
+    bit[33]    p1_data_offset_bkt_3;
+    bit[33]    p1_data_offset_bkt_end;
+    bit        p1_data_offset_is_max;
+    bit[11]    p1_data_offset_bkt;
+    bit[11]    p1_data_offset_result;
+} t_data_ofs_combs;
+
+/*t t_data_ofs_state
+ */
+typedef struct
+{
+    bit[32]    p1_data_offset;
+    bit        p1_data_offset_is_neg;
+    bit[11]    p2_data_offset;
+} t_data_ofs_state;
+
+/*a Module
+ */
+module analyzer_trace_ram( clock clk,
+                           input bit reset_n,
+
+                           input  t_analyzer_trace_op4  trace_op,
+                           input  t_analyzer_data4  din,
+
+                           output t_fifo_status fifo_status_l,
+                           output t_fifo_status fifo_status_h,
+
+                           input t_analyzer_trace_req trace_req,
+                           output t_analyzer_trace_resp trace_resp,
+
+                           input  t_analyzer_trace_cfg trace_cfg
+ )
+"""
+
+This includes a dual-port 64-bit SRAM to provide a trace FIFO or journal, or histogram.
+
+It takes two operations per cycle - effectively one for each half of the 64-bit data.
+
+The data source for each 32-bit data D can be data, time, time delta (since last record), time record (does not do an op?)
+
+This initial data (for each 32-bits) is adjusted using:
+
+ D_value[i] = ((D[i] - cfg.value_base[i]) >> cfg.value_shf[i]) [ & cfg.value_mask[i] or max_min at value_mask]
+
+By max-min - if using max_min and ((D[i] - cfg.value_base[i]) >> cfg.value_shf[i]) is negative (signed shift!) then use 0, and if +ve and any bit of ~value_mask is set then use value_mask
+
+For histogram operation an 11-bit SRAM index must be calculated. This comes from 32-bit
+data D. This should be:
+
+ D_ofs   = (D[0 or 1] - cfg.ofs_base) >> cfg.ofs_shf
+ D_ofs_bkt_1  = D_ofs - 512;
+ D_ofs_bkt_2  = D_ofs - (512+2048);
+ D_ofs_bkt_3  = D_ofs - (512+2048+8192);
+ D_ofs_bkt_end  = D_ofs - (512+2048+8192+32768);
+ D_ofs_is_MAX = (D_ofs_bkt_end>=0)
+
+ if D_ofs_is_MAX {
+     index = 2047;
+ else if D_ofs_bkt_3 >= 0 { // D_ofs_bkt_3 >=0
+     index = 2b11, D_ofs_bkt_3[9;6];
+ else if D_ofs_bkt_2 >= 0 { // D_ofs_bkt_2 >= 0, bkt_3 <0
+     index = 2b10, D_ofs_bkt_2[9;4];
+ else if D_ofs_bkt_1 >= 0 { // D_ofs_bkt_1 >=0, bkt_2< 0 (and 3)
+     index = 2b01, D_ofs_bkt_1[9;2];
+ else { // D_ofs >=0 (probably), bkt_1 <0 (and 2, 3)
+     index = 2b00, D_ofs[9;0];
+ }
+ if cfg.no_bkts {
+  index = D_ofs[11;0];
+ }
+ if D_ofs <= 0 { index = 0; }
+
+One side of the SRAM can be used for a histogram; this uses the offset above, and can:
+
+a. saturating 32-bit increment
+
+b. saturating 16-bit increment and saturating add 16-bit value
+ 
+Both sides of the SRAM can be used for a histogram; this uses the offset above, and can:
+
+c. saturating 32-bit increment and saturating 32-bit sum of values
+ 
+d. saturating 16-bit increment and saturating 16-bit value and record min/max 16-bit value
+ 
+e. saturating 32-bit increment and record min 32-bit value
+ 
+f. saturating 32-bit increment and record max 32-bit value
+ 
+g. record min 32-bit value and record max 32-bit value
+
+If one side is used as a histogram the other can be used for a FIFO or journal of:
+
+a. 8-bit values
+
+b. 16-bit values
+
+c. 32-bit values
+
+If neither side is used as a histogram the SRAMs can be used for a single FIFO or journal of:
+
+a. 8-bit values
+
+b. 16-bit values
+
+c. 32-bit values
+
+If neither side is used as a histogram the SRAMs can be used for TWO independent FIFO or journal of:
+
+a. 8-bit values
+
+b. 16-bit values
+
+c. 32-bit values
+
+"""
+
+{
+    /*b Default clock and reset
+     */
+    default clock clk;
+    default reset active_low reset_n;
+
+    /*b State and combs */
+    clocked t_data_value_state[2] data_value_state = {*=0};
+    comb t_data_value_combs[2] data_value_combs;
+    clocked t_data_ofs_state data_ofs_state = {*=0};
+    comb t_data_ofs_combs data_ofs_combs;
+    
+    comb t_access_combs[2] access_combs;
+    
+    net t_fifo_status fifo_status_l;
+    net t_fifo_status fifo_status_h;
+
+    /*b Data value logic
+     */
+    data_value_path "Initial data value path": {
+        if (din.valid) {
+            data_value_state[0].p0_din <= din.data_0;
+            data_value_state[1].p0_din <= din.data_1;
+        }
+
+        data_value_combs[0].p0_data_in = data_value_state[0].p0_din;
+        data_value_combs[1].p0_data_in = data_value_state[1].p0_din;
+
+        for (i;2) {
+            data_value_combs[i].p0_data_value = bundle(1b0, data_value_combs[i].p0_data_in) - bundle(9b0, trace_cfg.value_0.base);
+        }
+
+        for (i; 2) {
+            data_value_state[i].p1_data_value <= data_value_combs[i].p0_data_value;
+        }
+
+        for (i; 2) {
+            data_value_combs[i].p1_data_is_neg = data_value_state[i].p1_data_value[32];
+            data_value_combs[i].p1_data_shf    = data_value_state[i].p1_data_value[32;0] >> trace_cfg.value_0.shift;
+            data_value_combs[i].p1_data_mask   = 64hffff << trace_cfg.value_0.mask_size;
+            data_value_combs[i].p1_data_result = data_value_combs[i].p1_data_shf & data_value_combs[i].p1_data_mask[32;32];
+            data_value_combs[i].p1_data_unused = data_value_combs[i].p1_data_shf & ~data_value_combs[i].p1_data_mask[32;32];
+            if (trace_cfg.value_0.max_min) {
+                if (data_value_combs[i].p1_data_is_neg) {
+                    data_value_combs[i].p1_data_result = 0;
+                }
+                elsif (data_value_combs[i].p1_data_unused != 0) {
+                    data_value_combs[i].p1_data_result = data_value_combs[i].p1_data_mask[32;32];
+                }
+            }
+        }
+
+        for (i; 2) {
+            data_value_state[i].p2_data_value <= data_value_combs[i].p1_data_result;
+        }
+
+        if (!trace_cfg.enable) {
+            for (i; 2) {
+                data_value_state[i] <= data_value_state[i];
+            }
+        }
+    }
+
+    /*b Initial data logic
+     */
+    initial_data_path "Initial data path": {
+        data_ofs_combs.p0_data_offset = bundle(1b0, data_value_combs[0].p0_data_in) -  bundle(9b0, trace_cfg.offset.base);
+        if (trace_cfg.offset.use_data_1) {
+            data_ofs_combs.p0_data_offset = bundle(1b0, data_value_combs[1].p0_data_in) - bundle(9b0, trace_cfg.offset.base);
+        }
+        data_ofs_combs.p0_data_offset_is_neg = data_ofs_combs.p0_data_offset[32];
+        data_ofs_combs.p0_data_offset_shf = data_ofs_combs.p0_data_offset[32;0];
+        if (trace_cfg.offset.shift<20) {
+            data_ofs_combs.p0_data_offset_shf = data_ofs_combs.p0_data_offset[32;0] >> trace_cfg.offset.shift;
+        }
+
+        data_ofs_state.p1_data_offset_is_neg <= data_ofs_combs.p0_data_offset_is_neg;
+        data_ofs_state.p1_data_offset <= data_ofs_combs.p0_data_offset_shf;
+
+        data_ofs_combs.p1_data_offset_bkt_1 = bundle(1b0, data_ofs_state.p1_data_offset) - 0x200;
+        data_ofs_combs.p1_data_offset_bkt_2 = bundle(1b0, data_ofs_state.p1_data_offset) - 0xa00;
+        data_ofs_combs.p1_data_offset_bkt_3 = bundle(1b0, data_ofs_state.p1_data_offset) - 0x2a00;
+        data_ofs_combs.p1_data_offset_bkt_end = bundle(1b0, data_ofs_state.p1_data_offset) - 0xaa00;
+        data_ofs_combs.p1_data_offset_is_max = !data_ofs_combs.p1_data_offset_bkt_end[32];
+
+        data_ofs_combs.p1_data_offset_bkt = 0;
+        if (data_ofs_combs.p1_data_offset_is_max) {
+            data_ofs_combs.p1_data_offset_bkt = -1;
+        } elsif (!data_ofs_combs.p1_data_offset_bkt_3[32]) {
+            data_ofs_combs.p1_data_offset_bkt = bundle(2b11, data_ofs_combs.p1_data_offset_bkt_3[9;6]);
+        } elsif (!data_ofs_combs.p1_data_offset_bkt_2[32]) {
+            data_ofs_combs.p1_data_offset_bkt = bundle(2b10, data_ofs_combs.p1_data_offset_bkt_2[9;4]);
+        } elsif (!data_ofs_combs.p1_data_offset_bkt_1[32]) {
+            data_ofs_combs.p1_data_offset_bkt = bundle(2b01, data_ofs_combs.p1_data_offset_bkt_1[9;2]);
+        } else { // assume offset >=0 for now
+            data_ofs_combs.p1_data_offset_bkt = bundle(2b00, data_ofs_state.p1_data_offset[9;0]);
+        }
+
+        data_ofs_combs.p1_data_offset_result = data_ofs_combs.p1_data_offset_bkt;
+        if (data_ofs_state.p1_data_offset_is_neg) {
+            data_ofs_combs.p1_data_offset_result = 0;
+        } elsif (trace_cfg.offset.no_bkts) {
+            data_ofs_combs.p1_data_offset_result = data_ofs_state.p1_data_offset[11;0];
+        }
+
+        data_ofs_state.p2_data_offset <= data_ofs_combs.p1_data_offset_result;
+
+        if (!trace_cfg.enable) {
+            data_ofs_state <= data_ofs_state;
+        }
+    }
+
+    /*b Datapaths
+     */
+    datapaths "Data paths": {
+        for (i;2) {
+            access_combs[i] = {*=0};
+        }
+        analyzer_trace_ram_data_path dp_0( clk<-clk,
+                                           reset_n <= reset_n,
+                                           access_combs <= access_combs[0],
+                                           fifo_status => fifo_status_l,
+                                           trace_cfg_fifo <= trace_cfg.fifo_0
+            );
+        analyzer_trace_ram_data_path dp_1( clk<-clk,
+                                           reset_n <= reset_n,
+                                           access_combs <= access_combs[1],
+                                           fifo_status => fifo_status_h,
+                                           trace_cfg_fifo <= trace_cfg.fifo_1
+            );
+    }
+
+    /*b Trace response
+     */
+    trace_response "Trace response": {
+        trace_resp = {*=0};
+    }
+    
+    /*b Done
+     */
+}
