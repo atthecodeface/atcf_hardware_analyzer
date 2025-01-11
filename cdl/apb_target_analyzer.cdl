@@ -284,7 +284,7 @@ Maybe the 'interstate' action (which is now 'goto stage n' plus the counter) cou
      */
     signal_path "Signal path logic": {
         analyzer_tgt_r <= analyzer_tgt;
-        buffered_input = analyzer_tgt_r.data.data[32;0]; // for now...
+        buffered_input = analyzer_tgt_r.data.data_0; // for now...
         full_switch (apb_state.control.state) {
         case actl_idle: {
             analyzer_mst.select <= 0;

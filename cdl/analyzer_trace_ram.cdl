@@ -219,7 +219,7 @@ c. 32-bit values
         for (i; 2) {
             data_value_combs[i].p1_data_is_neg = data_value_state[i].p1_data_value[32];
             data_value_combs[i].p1_data_shf    = data_value_state[i].p1_data_value[32;0] >> trace_cfg.value_0.shift;
-            data_value_combs[i].p1_data_mask   = 64hffff << trace_cfg.value_0.mask_size;
+            data_value_combs[i].p1_data_mask   = 64hffff_ffff_0000_0000 >> trace_cfg.value_0.mask_size;
             data_value_combs[i].p1_data_result = data_value_combs[i].p1_data_shf & data_value_combs[i].p1_data_mask[32;32];
             data_value_combs[i].p1_data_unused = data_value_combs[i].p1_data_shf & ~data_value_combs[i].p1_data_mask[32;32];
             if (trace_cfg.value_0.max_min) {

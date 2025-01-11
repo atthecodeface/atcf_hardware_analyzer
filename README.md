@@ -4,6 +4,31 @@ This provides a suite of modules and types that provide for an
 in-silicon or in-FPGA logic analyzer, which can capture signal traces
 or statistics about signal arrival times
 
+The concept behind the ATCF analyzer is:
+
+* Any component on a device can source an analyzer trace bus,
+  controlled by a standard mechanism (to allow the component to select
+  one of many potential data sources), which can be disables with a
+  clock gate so that it only consumes power when debugging is
+  required.
+
+* The sources are combined by registered wire-ored pipeline stages,
+  with clock gating provided to maintain low power when debugging is
+  disabled.
+
+* The combined data is analyzed by a *trigger* mechanism, which sits
+  alongside a pipeline of the analyzer data and produces a *trigger
+  action* to coincide with some data
+
+* The *trigger action* and data are fed to a *trace* module; this
+  terminates the data in some fashion - perhaps by storing one or more
+  traces in an SRAM, or just counting occurrences of triggers.
+
+* An analyzer controller that is connected to CSRs can: drive the
+  control portion of the analyzer bus (to enable particular components
+  and select potential data sources); configure the trigger; configure
+  the trace; request the trace data and present it over CSR reads.
+
 ## Analyzer trace bus
 
 Fundamentally the logic analyzer system operates on signals provided
@@ -39,7 +64,11 @@ number of cycles, and presenting at the same time (matching the input)
 a `t_analyzer_trace_op4` which aligns to the data.
 
 The data and the analyzer trace op are fed into a trace module (such
-as an `analyzer_trace_ram`). This captures the data when it is enabled the the trace ops indicate it; the captured data can be interrogated by a module (such as an `apb_target_analyer_access` module, which issues `t_analyzer_trace_req` and which gets `t_analyzer_trace_resp` in response.
+as an `analyzer_trace_ram`). This captures the data when it is enabled
+the the trace ops indicate it; the captured data can be interrogated
+by a module (such as an `apb_target_analyer_access` module, which
+issues `t_analyzer_trace_req` and which gets `t_analyzer_trace_resp`
+in response.
 
 ## Access to the trace data
 
@@ -48,10 +77,6 @@ A module such as the `apb_target_analyer_access` drives the
 `t_analyzer_trace_resp` in response. It is also responsible for
 sourcing the `t_analyzer_trace_cfg` to configure the trace and trigger
 modules.
-
-## Status
-
-The repository is in use in the ATCF RISC-V systems grip repository
 
 # Analyzer trigger modules
 
@@ -151,6 +176,196 @@ TBD
 ### Fifo occupancy (16-bits) changes
 
 TBD
+
+
+# Analyzer trace modules
+
+## `analyzer_trace_ram` module
+
+This module contains a pair of 8kB dual-port SRAMs which can store
+traces or histograms of captured data values from a trigger (which can
+include times, if the trigger produces data which includes times).
+
+The module takes a trigger operation and two 32-bit trigger data
+values; it produces from these two data values a histogram index
+value.
+
+The two SRAMs are then independently fed the two data values and the
+histogram index; each SRAM can be configured to capture a trace (in
+which case it ignores the histogram index, and uses FIFO pointers) or
+to use the histogram index and combine the SRAM data with one of the
+two data values to update the SRAM (e.g. by adding the data value).
+
+The SRAMs can thus be configured to operate (for example):
+
+* As one database recording the number of occurrences and min, max,
+  total data access time for 2k different DRAM addresses.
+
+* As a database recording the number of occurrences and total data
+  access time for 2k different DRAM addresses while separately
+  capturing a trace of DRAM access requests for only those addresses
+
+* As a histogram of the residence times of a specific set of states of
+  a state machine, while capturing a trace of the other data
+
+* As a single 16k entry trace of 8-bits of data from the analyzer data
+  bus (e.g. capturing the last 16k state transitions of a state
+  machine)
+
+* As a 2k entry trace of 32-bit absolute time and 32-bits of trace
+  data for every cycle the trace data changes.
+
+and infinitely more...
+
+### Pretreatment of trigger data (data value selection)
+
+The trigger data is a pair of 32-bit data. A pretreatment is applied
+to this data to generate the data used for an index into the SRAM or
+that is used in the actual trace.
+
+Both of the trigger data are treated in the same
+manner (with separate configuration).
+
+The basic treatment is to subtract a base value, shift the result
+down, and then mask this to bound the data within a certain
+range. However, the treatment can be configured to *bound* the value,
+such that if the input is less than the base then the output is *0*,
+and if the input is too large then the output is *mask* (rather than
+purely ANDing with the mask).
+
+The simplest treatment is just to pass the trigger data through: this
+is configured with a base of 0, a shift of 0, and a mask size of 0.
+
+A range of bits from the trigger data can be selected directly, if
+required; to select 7 bits starting at bit 12 the configuration would
+be a base of 0, a shift of 12, and a mask size of 32-7=25.
+
+The trigger data might be a residence time (from a time delta
+generated in the trigger), and a histogram of residence times may be
+required. The smallest possible residence time might be 100, and the
+largest expected 1000. A base of 100, a shift of 0, and a mask of
+32-10=22 would perform:
+
+```
+value = ((trigger data - 100) >> 0) % 1024
+```
+
+which would be correct *except* for outlier values of the trigger data
+for residence time; these need to be bounded, so setting the *max_min*
+configuration would do this:
+
+```
+value = ((trigger data - 100) >> 0).min_max(0,1023)
+```
+
+If bits 17 to 27 of the trigger data contain the residence time then
+the configuration could be a base of 100<<17, a shift of 17, and
+min-max of 2k (11 bits):
+
+```
+value = ((trigger data - (100<<17)) >> 17).min_max(0,2047)
+      = ((trigger data >> 17) - 100).min_max(0,2047)
+```
+
+If bits 13 to 31 of the trigger data contain the residence time then the
+configuration could be a base of 100<<13, a shift of 13, and min-max
+of 512k-1 (19 bits):
+
+```
+value = ((trigger data >> 13) - 100).min_max(0,512k-1)
+```
+
+### Data offset for capturing (histogram index selection)
+
+The pretreatment is designed to extract the relevant data from the
+trigger data; this data may be required to be stored in an SRAM trace,
+or it might be a residence time, or it might be a state number or
+transaction id, DRAM address, or whatever.
+
+The analyzer might be required to generate a histogram where the
+residence time of different states needs to be recorded in different
+histogram entries; it might be required to generate min/max/total
+access times for different DRAM addresses in different table
+entries. Hence a second treatment phase is required to (potentially)
+generate the histogram index for a trigger data from the pretreatment
+data.
+
+Hence, once the pretreatment of data has been performed a *second*
+calculation is performed ('bucketing'), which can be used for
+addressing the SRAM(s). The output of this stage is an 11 bit value
+(for use in the 2k entry SRAMs).
+
+This takes either of the pretreated trigger data; it subtracts a base
+value and shifts it down by a configurable shift (of up to 20) - producing a value *X*. It
+then performs a range compression on this *X* value:
+
+* If *X* < 0 the the result is 0
+
+* else if 0 <= *X* < 512 the the result is *X*
+
+* else if 0 <= (*X* - 512)/4 < 512 the the result is (*X* - 512)/4 + 512
+
+* else if 0 <= (*X* - 2560)/16 < 512 the the result is (*X* - 2560)/16 + 1024
+
+* else if 0 <= (*X* - 10752)/64 < 512 the the result is (*X* - 10752)/64 + 1536
+
+* else the result is 2047
+
+This 'bucketing' operation effectively uses offsets 0 to 0x1ff as a
+bucket size of 1; 0x200 to 0x3ff as a bucket size of 4; 0x400 to 0x5ff
+as a bucket size of 16; 0x600 to 0x7fe as a bucket size of 64. Entry 0
+also holds any value that was below the 'base', and entry 0x7ff holds
+any value more than 0xa9c0 (approx 43000) above the base.
+
+This 'bucketing' stage can disabled - i.e. the data offset is taken
+directly from the bottom 11 bits of ((*X* - base)>>shift) (except if
+*X* is less than base then 0 is used). To just pass through the
+pretreated data directly, configure the base and shift to be 0.
+
+### SRAM operation
+
+The result of the pretreatment of the data and the data offset
+calculations are two 32-bit data values, and one index value (derived
+from one of those two 32-bit data values). Each SRAM selects *one* of
+the two data values to be used for its data.
+
+Each SRAM is contained within an `analyzer_trace_ram_data_path`
+module. This contains logic that for FIFO read and write pointers, if
+the SRAM is to be used as a trace RAM. This logic can be configured to
+support *halt on full*, or it can be configured to *journal* - that
+is, it keeps recording after becoming full by dragging the 'read'
+pointer along as it continues to increase the 'write' pointer on every
+push. In *journal* mode the tracing should be stopped explicitly by
+the control interface.
+
+The SRAM can be used to capture traces or generate histograms; to
+support this it has an ALU pipeline that has SRAM read request, SRAM
+read data, ALU operation, SRAM writeback pipeline stages. The ALU
+operations supported include `write8`, `write16`, `write32`, `inc32`, `sum32`,
+`min32`, `max32`, `min_max16`, and `inc16_add16`.
+
+The *address* for a trace SRAM operation is taken from the FIFO `write
+pointer` if a trace is being captured; however, to generate histograms
+the address is taken from the data offset.
+
+The write operations just write the selected data over the current
+contents of the SRAM; this allows for SRAM traces to record only 8
+bits or 16 bits from the selected bus.
+
+The increment operations add 1 to the SRAM contents (but saturating at
+'intmax') and stores that back in the SRAM. This is used to *count*
+the number of operations. (This does not use the 'selected data').
+
+The add operation adds the *selected data* to the SRAM contents (but saturating at
+'intmax') and stores that back in the SRAM.
+
+The min operation compares the *selected data* to the SRAM contents;
+if it is less then it stores the value in the SRAM, but if it is
+greater then it does not change the SRAM contents.
+
+The max operation compares the *selected data* to the SRAM contents;
+if it is greater then it stores the value in the SRAM, but if it is
+less then it does not change the SRAM contents.
 
 # Commonmark notes
 

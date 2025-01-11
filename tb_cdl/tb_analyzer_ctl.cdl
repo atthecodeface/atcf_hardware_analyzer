@@ -17,7 +17,7 @@ module tb_analyzer_ctl( clock clk,
     net t_analyzer_tgt[8] tgt;
     net t_analyzer_ctl[8] ctl;
 
-    comb t_analyzer_data analyzer_data;
+    comb t_analyzer_data4 analyzer_data;
     modules: {
         analyzer_data = {*=0};
         apb_target_analyzer_ctl dut( clk <- clk,

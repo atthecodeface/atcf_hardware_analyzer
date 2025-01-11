@@ -21,24 +21,30 @@
  */
 include "analyzer.h"
 
+/*a Constants
+ */
+constant integer analyzer_config_trace_width=4 """If less than 4 then the appropriate top data values are zeroed""" ;
+
 /*a Types
 */
 /*t t_analyzer_combs */
 typedef struct {
-    bit enable_begin;
-    bit enable_end;
-    bit select_begin;
-    bit ready_begin;
+    bit enable_begin "Asserted if enable is now asserted but was not in the last cycle";
+    bit enable_end "Asserted if enable is now deasserted but was asserted in the last cycle";
+    bit select_begin "Asserted if select is asserted when enable_begin is asserted";
+    bit mst_data_valid "Asserted if the master is presenting data for this target and it has been selected";
+    bit ready_begin "Asserted when the master stops providing valid data and the target is selected, to indicate the target is ready to begin copying it client data to the analyzer trace bus";
 } t_analyzer_combs;
 
 /*t t_analyzer_state */
 typedef struct {
-    bit selected;
-    bit data_valid;
-    bit reset_all;
-    bit last_enable;
-    t_analyzer_ctl  ctl;
-    t_analyzer_data data;
+    bit last_enable "Asserted if enable was asserted in the last cycle";
+    bit selected "Asserted if this target is selected (rising edge of enable occurs when select is asserted)";
+    bit ctl_data_valid "Asserted after the first valid master control data is captured; only asserted in the selected target";
+    bit reset_all "Asserted for one cycle after enable is deasserted, to clear the state";
+    bit[4] data_mux_sel "Selector for which client data is passed to which t_analyzer_data4 lanes, if configured for fewer than 4";
+    t_analyzer_ctl  ctl "The control bus out to the client";
+    t_analyzer_data4 data "The data captured from the client when this target is selected";
 } t_analyzer_state;
 
 /*a Module
@@ -54,9 +60,58 @@ module analyzer_target( clock clk,
                         input  t_analyzer_mst  analyzer_mst,
                         output t_analyzer_tgt  analyzer_tgt,
 
-                        output t_analyzer_ctl analyzer_ctl,
-                        input t_analyzer_data analyzer_data
+                        output t_analyzer_ctl  analyzer_ctl,
+                        input t_analyzer_data4 analyzer_data
     )
+"""
+This module is included by components that need to drive the analyzer trace bus.
+
+The protocol for *analyzer_mst* is:
+
+* The master asserts enable, and then a number of clock ticks later asserts select for a single cycle.
+
+* Enable is driven down and up through the tree, delayed by a clock
+  tick at each stage; each endpoint sees the rising edge of enable at
+  a different time.
+
+* Select is driven directly down through the layers of the tree
+  delayed by a clock tick at each mux.
+
+* When timed correctly this selects a single *analyzer_target*.
+
+* When a target is selected, data can be driven to it by asserting
+  *valid*; this occurs simultaneously with valid data on the *data*
+  *field, which is shifted up into the mux control (so earlier data
+  *appears higher in the mux_control output).
+
+* When *valid* is deasserted the selected target will assert the
+  *enable* field of its *ctl* output, and start copying the
+  `t_analyzer_data` input back up the analyzer trace bus.
+
+* When debugging is complete the master deasserts enable
+  and this propagates through the tree, disabling the copying of the
+  data from the client back up the analyzer bus.
+
+A positive edge on the *analyzer_mst* enable input, when select is
+asserted, puts the target into *selected* state.
+
+A negative edge on the *analyzer_mst* enable input effectively resets
+this module.
+
+This module can be configured to support a trace bus that is narrower
+than 4 32-bit data values. If this is the case then the last 4 bits of
+data supplied on the master control bus control how the client's four
+32-bit data values map onto the outward trace bus.
+
+ mux   data4 sources
+ 000      3210
+ 001      3220
+ 01x      3230
+ 100      3213
+ 101      3221
+ 11x      3232
+               
+"""
 {
     /*b Clock and reset */
     default clock clk;
@@ -66,55 +121,148 @@ module analyzer_target( clock clk,
     comb    t_analyzer_combs analyzer_combs;
     clocked t_analyzer_state analyzer_state = {*=0};
 
-    /*b Blah */
-    blah : {
+    /*b Decode analyzer_mst */
+    decode_analyzer_mst : {
         analyzer_combs.enable_begin =  analyzer_mst.enable && !analyzer_state.last_enable;
         analyzer_combs.enable_end   = !analyzer_mst.enable &&  analyzer_state.last_enable;
+
         analyzer_combs.select_begin = 0;
+        analyzer_combs.ready_begin = 0;
+        analyzer_combs.mst_data_valid = 0;
+
         if (analyzer_combs.enable_begin && analyzer_mst.select) {
             analyzer_combs.select_begin = 1;
         }
-        analyzer_combs.ready_begin = 0;
-        if (analyzer_state.data_valid && analyzer_state.selected && !analyzer_mst.valid) {
-            analyzer_combs.ready_begin = 1;
+
+        // Once selected watch for 'valid' data; when that is
+        // complete, this is ready
+        if (analyzer_state.selected) {
+            if (analyzer_mst.valid) {
+                analyzer_combs.mst_data_valid = 1;
+            } elsif (analyzer_state.ctl_data_valid) {
+                analyzer_combs.ready_begin = 1;
+            }
         }
 
+    }
+    
+    /*b Analyzer target state */
+    analyzer_tgt_state : {
         if (analyzer_mst.enable || analyzer_state.last_enable) {
             analyzer_state.last_enable <= analyzer_mst.enable;
-        }
-        
-        if (analyzer_combs.enable_end) {
-            analyzer_state.reset_all <= 1;
-        }
-        
-        if (analyzer_mst.valid && analyzer_state.selected) {
-            analyzer_state.ctl.mux_control <= (analyzer_state.ctl.mux_control<<4);
-            analyzer_state.ctl.mux_control[4;0] <= analyzer_mst.data;
-            analyzer_state.data_valid <= 1;
-        }
-        if (analyzer_combs.ready_begin) {
-            analyzer_state.ctl.enable <= 1;
-        }
-        if (analyzer_state.ctl.enable) {
-            analyzer_state.data <= analyzer_data;
-        }
-        if (analyzer_state.reset_all) {
-            analyzer_state.reset_all   <= 0;
-            analyzer_state.selected    <= 0;
-            analyzer_state.data_valid  <= 0;
-            analyzer_state.ctl         <= {*=0};
-            analyzer_state.data        <= {*=0};
         }
 
         if (analyzer_combs.select_begin) {
             analyzer_state.selected    <= 1;
-            analyzer_state.data_valid  <= 0;
+        }
+
+        if (analyzer_combs.enable_end) {
+            analyzer_state.reset_all <= 1;
+        }
+        
+        if (analyzer_state.reset_all) {
+            analyzer_state.reset_all   <= 0;
+            analyzer_state.selected    <= 0;
+        }
+
+        analyzer_tgt.selected = analyzer_state.selected;
+        analyzer_tgt.enable_return = analyzer_state.last_enable;
+    }
+        
+    /*b Analyzer control to client */
+    analyzer_control : {
+        if (analyzer_combs.select_begin) {
+            analyzer_state.ctl_data_valid  <= 0;
+        }
+
+        if (analyzer_combs.mst_data_valid) {
+            analyzer_state.ctl_data_valid <= 1;
+
+            analyzer_state.ctl.mux_control <= (analyzer_state.ctl.mux_control<<4);
+            analyzer_state.ctl.mux_control[4;0] <= analyzer_mst.data;
+
+            if (analyzer_config_trace_width < 4) {
+                analyzer_state.ctl.mux_control[4;0] <= analyzer_state.data_mux_sel;
+                analyzer_state.data_mux_sel <= analyzer_mst.data;
+            } else {
+                analyzer_state.data_mux_sel <= 0;
+            }
+        }
+
+        if (analyzer_combs.ready_begin) {
+            analyzer_state.ctl.enable <= 1;
+        }
+
+        if (analyzer_state.reset_all) {
+            analyzer_state.ctl_data_valid  <= 0;
+            analyzer_state.ctl <= {*=0};
         }
 
         analyzer_ctl  = analyzer_state.ctl;
+        
+        /*b All done */
+    }
+
+    /*b Analyzer data from client */
+    analyzer_data : {
+        if (analyzer_state.ctl.enable && (analyzer_state.data.valid || analyzer_data.valid)) {
+            analyzer_state.data <= {*=0};
+            analyzer_state.data.valid <= analyzer_data.valid;
+            if (analyzer_data.valid) {
+                analyzer_state.data.data_0 <= analyzer_data.data_0;
+                analyzer_state.data.data_1 <= analyzer_data.data_1;
+                analyzer_state.data.data_2 <= analyzer_data.data_2;
+                analyzer_state.data.data_3 <= analyzer_data.data_3;
+                full_switch (analyzer_state.data_mux_sel[3;0]) {
+                    case 3b001: {
+                        analyzer_state.data.data_1 <= analyzer_data.data_2;
+                    }
+                    case 3b010: {
+                        analyzer_state.data.data_1 <= analyzer_data.data_3;
+                    }
+                    case 3b011: {
+                        analyzer_state.data.data_1 <= analyzer_data.data_3;
+                    }
+                    case 3b100: {
+                        analyzer_state.data.data_0 <= analyzer_data.data_3;
+                        analyzer_state.data.data_1 <= analyzer_data.data_1;
+                    }
+                    case 3b101: {
+                        analyzer_state.data.data_0 <= analyzer_data.data_1;
+                        analyzer_state.data.data_1 <= analyzer_data.data_2;
+                    }
+                    case 3b110: {
+                        analyzer_state.data.data_0 <= analyzer_data.data_2;
+                        analyzer_state.data.data_1 <= analyzer_data.data_3;
+                    }
+                    case 3b111: {
+                        analyzer_state.data.data_0 <= analyzer_data.data_2;
+                        analyzer_state.data.data_1 <= analyzer_data.data_3;
+                    }
+                    default: {
+                        analyzer_state.data.data_0 <= analyzer_data.data_0;
+                    }
+                }
+            }
+        }
+
+        if (analyzer_state.reset_all) {
+            analyzer_state.data <= {*=0};
+        }
+
+        // Clear anything that is not configured to exist
+        //
+        // This will remove the registers if synthesized
+        if (analyzer_config_trace_width <= 3) {
+            analyzer_state.data.data_3 <= 0;
+        }
+        if (analyzer_config_trace_width <= 2) {
+            analyzer_state.data.data_2 <= 0;
+        }
+        if (analyzer_config_trace_width <= 1) {
+            analyzer_state.data.data_1 <= 0;
+        }
         analyzer_tgt.data = analyzer_state.data;
-        analyzer_tgt.selected = analyzer_state.selected;
-        analyzer_tgt.enable_return = analyzer_state.last_enable;
         
         /*b All done */
     }

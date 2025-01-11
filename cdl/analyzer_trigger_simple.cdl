@@ -188,6 +188,11 @@ So some configurations:
             }
         }
 
+        // to do:
+        //
+        // select pretrigger_data from data[0], recorded_state.data, data[0]^recorded_state.data, timer_state.timer_value.
+        //
+        // support trigger-every-other (i.e. in shadow of recorded_state change, don't trigger again)
         pretrigger_data = data[0];
 
         if (data[1].valid || data[2].valid) {
@@ -207,6 +212,11 @@ So some configurations:
         match_combs.data = data[3];
         match_combs.data_changing = 0;
 
+        // todo
+        //
+        // Should this compare with recorded data?
+        //
+        // Should this only compare with recorded data if configured?
         if (data[3].data_0 != data[2].data_0) {
             match_combs.data_changing = 1;
         }
@@ -288,6 +298,12 @@ So some configurations:
                 }
                 case atc_data_source_din_1: {
                     data_out[i] <= match_combs.data.data_1;
+                }
+                case atc_data_source_rd_0: {
+                    data_out[i] <= recorded_state.data[0];
+                }
+                case atc_data_source_rd_1: {
+                    data_out[i] <= recorded_state.data[1];
                 }
                 case atc_data_source_timer: {
                     data_out[i] <= timer_state.value;

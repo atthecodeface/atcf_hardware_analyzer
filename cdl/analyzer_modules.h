@@ -107,7 +107,7 @@ module analyzer_target( clock clk,
                         input  t_analyzer_mst  analyzer_mst,
                         output t_analyzer_tgt  analyzer_tgt,
                         output t_analyzer_ctl analyzer_ctl,
-                        input t_analyzer_data analyzer_data
+                        input t_analyzer_data4 analyzer_data
     )
 {
     timing to     rising clock clk analyzer_mst;

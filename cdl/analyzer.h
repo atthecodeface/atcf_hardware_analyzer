@@ -28,17 +28,21 @@ typedef struct {
     bit    select "If high when enable is seen to go high at a node then that node is selected and enabled";
 } t_analyzer_mst;
 
-/*t t_analyzer_data - Analyzer data */
+/*t t_analyzer_data4
+ */
 typedef struct {
-    bit     valid    "High if the data is valid from the target";
-    bit[64] data     "Analyzer data";
-} t_analyzer_data;
+    bit valid  "High if the data is valid from the target";
+    bit[32] data_0;
+    bit[32] data_1;
+    bit[32] data_2;
+    bit[32] data_3;
+} t_analyzer_data4;
 
 /*t t_analyzer_tgt - Target interface back towards master */
 typedef struct {
     bit     enable_return "If high and selected then node is enabled - chained through bus joiners and targets; if seen as low, then do not drive data bus";
     bit     selected      "Asserted if node is selected - for status only";
-    t_analyzer_data data  "Data from node; all zeros if not selected";
+    t_analyzer_data4 data  "Data from node; all zeros if not selected";
 } t_analyzer_tgt;
 
 /*t t_analyzer_ctl - Control information to a target */
@@ -114,7 +118,9 @@ typedef enum[3] {
     atc_data_source_timer,
     atc_data_source_timer_delta,
     atc_data_source_din_0,
-    atc_data_source_din_1
+    atc_data_source_rd_0,
+    atc_data_source_din_1,
+    atc_data_source_rd_1
 } t_analyzer_trigger_cfg_data_source;
 
 /*t t_analyzer_trigger_cfg
@@ -131,16 +137,6 @@ typedef struct {
     t_analyzer_trigger_cfg_data_source data_source_0;
     t_analyzer_trigger_cfg_data_source data_source_1;
 } t_analyzer_trigger_cfg;
-
-/*t t_analyzer_data4
- */
-typedef struct {
-    bit valid;
-    bit[32] data_0;
-    bit[32] data_1;
-    bit[32] data_2;
-    bit[32] data_3;
-} t_analyzer_data4;
 
 /*t t_analyzer_trace_data_op
  */
