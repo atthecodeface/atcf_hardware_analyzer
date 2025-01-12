@@ -8,3 +8,11 @@ t_analyzer_data4 = {
     "data_3":32,
 }
 
+# t_analyzer_filter_cfg
+t_analyzer_filter_cfg = {
+    "enable":1,
+    "accept_unchanging":1,
+    "mask": t_analyzer_data4,
+    "value": t_analyzer_data4,
+} 
+

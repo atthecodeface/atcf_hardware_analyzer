@@ -105,19 +105,19 @@ Else Accept if the filter is configured for non-changing
         filter_combs.match_value.valid = 0;
 
         filter_combs.needs_changing.data_0 = ~filter_cfg.mask.data_0 & filter_cfg.value.data_0;
-        filter_combs.needs_changing.data_1 = ~filter_cfg.mask.data_0 & filter_cfg.value.data_1;
-        filter_combs.needs_changing.data_2 = ~filter_cfg.mask.data_0 & filter_cfg.value.data_2;
-        filter_combs.needs_changing.data_3 = ~filter_cfg.mask.data_0 & filter_cfg.value.data_3;
+        filter_combs.needs_changing.data_1 = ~filter_cfg.mask.data_1 & filter_cfg.value.data_1;
+        filter_combs.needs_changing.data_2 = ~filter_cfg.mask.data_2 & filter_cfg.value.data_2;
+        filter_combs.needs_changing.data_3 = ~filter_cfg.mask.data_3 & filter_cfg.value.data_3;
 
         filter_combs.match_value.data_0 = filter_cfg.mask.data_0 & filter_cfg.value.data_0;
         filter_combs.match_value.data_1 = filter_cfg.mask.data_1 & filter_cfg.value.data_1;
         filter_combs.match_value.data_2 = filter_cfg.mask.data_2 & filter_cfg.value.data_2;
         filter_combs.match_value.data_3 = filter_cfg.mask.data_3 & filter_cfg.value.data_3;
         
-        filter_combs.must_match.data_0 = filter_cfg.mask.data_0 & data[1].data_0;
-        filter_combs.must_match.data_1 = filter_cfg.mask.data_0 & data[1].data_1;
-        filter_combs.must_match.data_2 = filter_cfg.mask.data_0 & data[1].data_2;
-        filter_combs.must_match.data_3 = filter_cfg.mask.data_0 & data[1].data_3;
+        filter_combs.must_match.data_0 = filter_cfg.mask.data_0 & data[0].data_0;
+        filter_combs.must_match.data_1 = filter_cfg.mask.data_1 & data[0].data_1;
+        filter_combs.must_match.data_2 = filter_cfg.mask.data_2 & data[0].data_2;
+        filter_combs.must_match.data_3 = filter_cfg.mask.data_3 & data[0].data_3;
         
         reject_p1 <= 0;
         if (filter_combs.must_match.data_0 != filter_combs.match_value.data_0) {

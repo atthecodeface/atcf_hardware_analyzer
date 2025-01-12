@@ -7,8 +7,8 @@ CDL_REGRESS = ${CDL_ROOT}/libexec/cdl/cdl_regress.py
 WAVES =
 
 SMOKE_OPTIONS = --only-tests 'smoke'
-SMOKE_TESTS   = test_analyzer
-REGRESS_TESTS = test_analyzer
+SMOKE_TESTS   = test_analyzer test_analyzer_filter
+REGRESS_TESTS = test_analyzer test_analyzer_filter
 CDL_REGRESS_PACKAGE_DIRS = --package-dir regress:${SRC_ROOT}/python --package-dir regress:${GRIP_ROOT_PATH}/atcf_hardware_utils/python --package-dir regress:${GRIP_ROOT_PATH}/atcf_hardware_apb/python
 
 #smoke_mifs

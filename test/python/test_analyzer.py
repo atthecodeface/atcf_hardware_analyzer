@@ -162,7 +162,6 @@ class AnalyzerCtlHardware(HardwareThDut):
 #c TestAnalyzerCtl
 class TestAnalyzerCtl(TestCase):
     hw = AnalyzerCtlHardware
-    _tests = {"0": (AnalyzerCtlTest_0, 1*1000, {}),
-              "smoke": (AnalyzerCtlTest_0, 2*1000, {}),
+    _tests = {"0": (AnalyzerCtlTest_0, 2*1000, {}),
     }
 
