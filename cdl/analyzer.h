@@ -52,6 +52,15 @@ typedef struct {
 } t_analyzer_ctl;
 
 /*a Types for the trace */
+/*t t_analyzer_filter_cfg
+ */
+typedef struct {
+    bit enable;
+    bit accept_unchanging;
+    t_analyzer_data4 mask;
+    t_analyzer_data4 value;
+} t_analyzer_filter_cfg;
+
 /*t t_analyzer_trace_cfg_value
  */
 typedef struct {

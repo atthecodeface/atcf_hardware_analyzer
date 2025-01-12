@@ -16,6 +16,7 @@ class AnalyzerModules(cdl_desc.Modules):
     modules += [ CdlModule("analyzer_mux_2") ]
     modules += [ CdlModule("analyzer_mux_8_e", cdl_filename="analyzer_mux_8", constants={"analyzer_config_num_targets":2}) ]
     modules += [ CdlModule("analyzer_mux_8") ]
+    modules += [ CdlModule("analyzer_trace_filter") ]
     modules += [ CdlModule("analyzer_trigger_simple_byte") ]
     modules += [ CdlModule("analyzer_trigger_simple") ]
     modules += [ CdlModule("analyzer_target") ]

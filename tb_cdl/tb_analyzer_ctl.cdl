@@ -2,10 +2,11 @@ include "apb::apb.h"
 include "analyzer.h"
 include "analyzer_modules.h"
 module tb_analyzer_ctl( clock clk,
-                                input bit reset_n,
-
-                                input  t_apb_request  apb_request  "APB request",
-                                output t_apb_response apb_response "APB response"
+                        input bit reset_n,
+                        
+                        input  t_apb_request  apb_request  "APB request",
+                        output t_apb_response apb_response "APB response",
+                        output t_analyzer_data4 analyzer_data4
     )
 {
     net t_apb_response apb_response;
@@ -17,9 +18,15 @@ module tb_analyzer_ctl( clock clk,
     net t_analyzer_tgt[8] tgt;
     net t_analyzer_ctl[8] ctl;
 
-    comb t_analyzer_data4 analyzer_data;
+    comb t_analyzer_data4[8] analyzer_data;
     modules: {
-        analyzer_data = {*=0};
+        for (i; 8) {
+            analyzer_data[i] = {*=0};
+            analyzer_data[i].valid = 1;
+            analyzer_data[i].data_0 = i;
+            analyzer_data[i].data_1 = ctl[i].mux_control;
+        }
+        analyzer_data4 = analyzer_tgt.data;
         apb_target_analyzer_ctl dut( clk <- clk,
                                      reset_n <= reset_n,
                                      apb_request <= apb_request,
@@ -63,7 +70,7 @@ module tb_analyzer_ctl( clock clk,
                                     analyzer_tgt => tgt[i],
                               
                                     analyzer_ctl => ctl[i],
-                                    analyzer_data <= analyzer_data
+                                    analyzer_data <= analyzer_data[i]
                 );
         }
     }

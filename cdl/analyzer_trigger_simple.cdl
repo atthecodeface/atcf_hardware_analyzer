@@ -8,18 +8,27 @@ include "clocking::clock_timer.h"
 include "std::srams.h"
 
 /*a Types */
+/*t t_timer_combs
+ */
+typedef struct
+{
+    bit[32] value;
+    bit[32] timer_delta;
+} t_timer_combs;
+
 /*t t_timer_state
  */
 typedef struct
 {
     bit[32] value;
+    bit[32] recorded_value;
+    bit[32] timer_delta;
 } t_timer_state;
 
 /*t t_recorded_state
  */
 typedef struct
 {
-    bit[32] timer;
     bit[32][2] data;
 } t_recorded_state;
 
@@ -28,7 +37,6 @@ typedef struct
 typedef struct
 {
     t_analyzer_data4 data;
-    bit data_changing;
     bit[2] matched;
     bit record_data;
     bit record_time;
@@ -46,7 +54,7 @@ module analyzer_trigger_simple( clock clk,
                            output  t_analyzer_trace_op4 trace_op,
                            input t_timer_value timer_value,
 
-                           input  t_analyzer_trigger_cfg trigger_cfg
+                           input  t_analyzer_trigger_cfg trigger_cfg_in
  )
 """
 
@@ -129,33 +137,53 @@ So some configurations:
     clocked t_recorded_state recorded_state = {*=0};
     clocked t_analyzer_data4[5] data = {*=0};
 
+    comb t_timer_combs timer_combs;
+
     comb t_analyzer_data4 pretrigger_data;
     comb t_match_combs match_combs;
     net bit[8][4] match_conds;
 
+    clocked t_analyzer_trigger_cfg trigger_cfg = {*=0};
     comb t_analyzer_trigger_cfg_data_source[2] trigger_cfg_ds;
-    
+    comb t_analyzer_trigger_cfg_data_action[2] trigger_cfg_m;
+
     clocked bit[32][2] data_out = {*=0};
     clocked  t_analyzer_trace_op4 trace_op ={*=0};
 
-    comb t_analyzer_trigger_cfg_data_action[2] trigger_cfg_m;
 
     /*b Timer value state
      */
     timer_value_logic "Timer value logic": {
+        if (trigger_cfg_in.enable || trigger_cfg.enable) {
+            trigger_cfg <= trigger_cfg_in;
+        }
+        trigger_cfg_ds[0] = trigger_cfg.data_source_0;
+        trigger_cfg_ds[1] = trigger_cfg.data_source_1;
+        trigger_cfg_m[0] = trigger_cfg.data_action_0;
+        trigger_cfg_m[1] = trigger_cfg.data_action_1;
+
+        timer_combs.value = timer_value.value[32;0];
         full_switch (trigger_cfg.timer_div) {
         case 2b00: {
-            timer_state.value <= timer_value.value[32;0];
+            timer_combs.value = timer_value.value[32;0];
         }
         case 2b01: {
-            timer_state.value <= timer_value.value[32;8];
+            timer_combs.value = timer_value.value[32;8];
         }
         case 2b10: {
-            timer_state.value <= timer_value.value[32;16];
+            timer_combs.value = timer_value.value[32;16];
         }
         case 2b11: {
-            timer_state.value <= timer_value.value[32;24];
+            timer_combs.value = timer_value.value[32;24];
         }
+        }
+        timer_combs.timer_delta = timer_combs.value - timer_state.recorded_value;
+
+        timer_state.value <= timer_combs.value;
+        timer_state.timer_delta <= timer_combs.timer_delta;
+        if (match_combs.record_time) {
+            timer_state.recorded_value <= timer_state.value;
+            timer_state.timer_delta <= 0;
         }
 
         if (!trigger_cfg.enable) {
@@ -163,7 +191,7 @@ So some configurations:
         }
     }
 
-    /*b Pretrigger data stage, record incoming data and implement 'only valid if changing'
+    /*b Pretrigger data stage, record incoming data
      */
     pretrigger_data "Pretrigger data stage": {
         // data[0] is data in to byte mask match
@@ -188,11 +216,16 @@ So some configurations:
             }
         }
 
+        //
+        // Support no match in shadow of match for up to 4 cycles
+        //
+        // Make the simple_byte a 2-clock stage
+        //
         // to do:
         //
         // select pretrigger_data from data[0], recorded_state.data, data[0]^recorded_state.data, timer_state.timer_value.
         //
-        // support trigger-every-other (i.e. in shadow of recorded_state change, don't trigger again)
+        // Acutally select an extra pretrigger data from (s& data_0 | s& data_1) ^ (s& recorded 0 | s& recorded 1), timer delta, timer value
         pretrigger_data = data[0];
 
         if (data[1].valid || data[2].valid) {
@@ -209,30 +242,19 @@ So some configurations:
             }
         }
 
-        match_combs.data = data[3];
-        match_combs.data_changing = 0;
-
-        // todo
-        //
-        // Should this compare with recorded data?
-        //
-        // Should this only compare with recorded data if configured?
-        if (data[3].data_0 != data[2].data_0) {
-            match_combs.data_changing = 1;
-        }
-        if (data[3].data_1 != data[2].data_1) {
-            match_combs.data_changing = 1;
-        }
-        if (data[3].data_2 != data[2].data_2) {
-            match_combs.data_changing = 1;
-        }
-        if (data[3].data_3 != data[2].data_3) {
-            match_combs.data_changing = 1;
-        }
-
+        match_combs.data = data[2];
     }
 
     /*b Trigger byte matching and combining
+     *
+     * Selects data from data[0]
+     *
+     * Performs match on selected data
+     *
+     * Registers match valid with data[1]
+     *
+     * Produces match_conds valid with data[1]
+     *
      */
     trigger_byte "Trigger byte matching": {
 
@@ -253,8 +275,6 @@ So some configurations:
                                          match_conds => match_conds[3],
                                          trigger_cfg_byte <= trigger_cfg.tb_3);
 
-        trigger_cfg_m[0] = trigger_cfg.data_action_0;
-        trigger_cfg_m[1] = trigger_cfg.data_action_1;
         match_combs.matched = 0;
         if (match_combs.data.valid) {
             for (m; 2) {
@@ -270,12 +290,12 @@ So some configurations:
         match_combs.record_time = 0;
         match_combs.record_data = 0;
         match_combs.capture_data = 0;
-        if (match_combs.matched[0] && (!trigger_cfg.data_action_0.only_if_changing || match_combs.data_changing)) {
+        if (match_combs.matched[0]) {
             match_combs.record_time |= trigger_cfg.data_action_0.record_time;
             match_combs.record_data |= trigger_cfg.data_action_0.record_data;
             match_combs.capture_data |= trigger_cfg.data_action_0.capture_data;
         }
-        if (match_combs.matched[1] && (!trigger_cfg.data_action_1.only_if_changing || match_combs.data_changing)) {
+        if (match_combs.matched[1]) {
             match_combs.record_time |= trigger_cfg.data_action_1.record_time;
             match_combs.record_data |= trigger_cfg.data_action_1.record_data;
             match_combs.capture_data |= trigger_cfg.data_action_1.capture_data;
@@ -286,8 +306,6 @@ So some configurations:
     /*b Data output generation (and recording for deltas)
      */
     data_out_generation "Data out generation": {
-        trigger_cfg_ds[0] = trigger_cfg.data_source_0;
-        trigger_cfg_ds[1] = trigger_cfg.data_source_1;
         trace_op.capture <= 0;
         for (i; 2) {
             if (match_combs.capture_data[i]) {
@@ -296,11 +314,11 @@ So some configurations:
                 case atc_data_source_din_0: {
                     data_out[i] <= match_combs.data.data_0;
                 }
-                case atc_data_source_din_1: {
-                    data_out[i] <= match_combs.data.data_1;
-                }
                 case atc_data_source_rd_0: {
                     data_out[i] <= recorded_state.data[0];
+                }
+                case atc_data_source_din_1: {
+                    data_out[i] <= match_combs.data.data_1;
                 }
                 case atc_data_source_rd_1: {
                     data_out[i] <= recorded_state.data[1];
@@ -309,13 +327,10 @@ So some configurations:
                     data_out[i] <= timer_state.value;
                 }
                 case atc_data_source_timer_delta: {
-                    data_out[i] <= timer_state.value - recorded_state.timer;
+                    data_out[i] <= timer_combs.timer_delta;
                 }
                 }
             }
-        }
-        if (match_combs.record_time) {
-            recorded_state.timer <= timer_state.value;
         }
         if (match_combs.record_data) {
             recorded_state.data[0] <= match_combs.data.data_0;
@@ -324,8 +339,8 @@ So some configurations:
         dout.valid = 0;
         dout.data_0 = data_out[0];
         dout.data_1 = data_out[1];
-        dout.data_2 = 0; // data_out[2];
-        dout.data_3 = 0; // data_out[3];
+        dout.data_2 = 0;
+        dout.data_3 = 0;
     }
     
     /*b Done

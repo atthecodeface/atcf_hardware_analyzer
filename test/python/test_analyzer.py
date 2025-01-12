@@ -20,7 +20,8 @@ from regress.apb.structs import t_apb_request, t_apb_response
 from regress.apb.bfm     import ApbMaster
 from queue import Queue
 from regress.utils import t_dprintf_req_4, t_dprintf_byte, Dprintf, t_dbg_master_request, t_dbg_master_response, DprintfBus, SramAccessBus, SramAccessRead, SramAccessWrite, DbgMaster, DbgMasterMuxScript, DbgMasterSramScript, DbgMasterFifoScript, FifoStatus, t_sram_access_req, t_sram_access_resp
-from regress.analyzer import target_analyzer_ctl
+from regress.analyzer import target_analyzer_ctl, t_analyzer_data4
+
 from cdl.utils   import csr
 from cdl.sim     import ThExecFile, LogEventParser
 from cdl.sim     import HardwareThDut
@@ -64,38 +65,69 @@ class AnalyzerCtlTest_Base(ThExecFile):
         pass
     #f run
     def run(self) -> None:
+        self.verbose.set_level(self.verbose.level_info)
+
         self.bfm_wait(4)
         self.die_event.reset()
 
+        self.verbose.info("Reading status, should be 0 to start with")
+
         self.bfm_wait(4)
         x = self.analyzer_status.read()
         self.compare_expected("Status",0,x)
 
+        # Count length of analyzer target chain
+        self.verbose.info("Write 0 to select none, wait, expect it to complete with count of 28 (cycles from enable in rising to enable out rising)")
         self.analyzer_select.write(0)
         self.bfm_wait(100)
         x = self.analyzer_status.read()
-        self.compare_expected("Status",0x8000001c,x)
+        self.compare_expected("Status top bit",1,x>>31)
+        self.compare_expected("Status low",0x1c,x&0x7fffffff)
 
+        # Clear the enable
+        self.verbose.info("Write 1<<31 to run clear, wait")
         self.analyzer_select.write(0x80000000)
         self.bfm_wait(100)
         x = self.analyzer_status.read()
-        self.compare_expected("Status",0x8000001c,x)
+        self.compare_expected("Status top bit",1,x>>31)
+        # self.compare_expected("Status low",0x1c,x&0x7fffffff)
 
         # Enable tgt 4 (3 is at 9, 2 is at 6, etc)
+        self.verbose.info("Enable with select at cycle 12 (three cycles per target), wait, expect it to run and then complete")
         self.analyzer_select_at.write(12)
+
+        # Running
         x = self.analyzer_status.read() & 0x80000000
-        self.compare_expected("Status",0,x)
+        self.compare_expected("Status top bit",0,x>>31)
+
         self.bfm_wait(100)
+
+        # Completed
         x = self.analyzer_status.read() & 0x80000000
-        self.compare_expected("Status",0x80000000,x)
+        self.compare_expected("Status top bit",1,x>>31)
+
+        self.verbose.info("Selected; write the data out")
 
         # Write 0x94 to tgt 4 (nybbles are reversed)
-        self.analyzer_write_data.write(73)
+        self.analyzer_write_data.write(0x49)
+        self.bfm_wait(20)
 
+        x = self.analyzer_data4__data_0.value()
+        self.compare_expected("Target should be driving 4 (its target number) to data0",0x4, x)
+        x = self.analyzer_data4__data_1.value()
+        self.compare_expected("Target should be driving 0x94 to data1",0x94, x)
+
+        # Clear the enable
+        self.verbose.info("Write 1<<31 to run clear, wait")
         self.analyzer_select.write(0x80000000)
         self.bfm_wait(100)
         x = self.analyzer_status.read()
-        self.compare_expected("Status",0x8000001c,x)
+        self.compare_expected("Status top bit",1,x>>31)
+
+        x = self.analyzer_data4__data_0.value()
+        self.compare_expected("Target data should be 0",0, x)
+        x = self.analyzer_data4__data_1.value()
+        self.compare_expected("Target data should be 0",0, x)
 
         self.bfm_wait_until_test_done(100)
         self.die_event.fire()
@@ -121,6 +153,7 @@ class AnalyzerCtlHardware(HardwareThDut):
     dut_inputs  = {"apb_request":t_apb_request,
     }
     dut_outputs = {"apb_response":t_apb_response,
+                   "analyzer_data4":t_analyzer_data4,
     }
     loggers = { # "dprintf": {"modules":"dut.dut", "verbose":1}
                 }

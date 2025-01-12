@@ -20,7 +20,10 @@ class WriteDataCsr(Csr):
 
 class AnalyzerCtlAddressMap(Map):
     _map = [ MapCsr(reg=0, name="status", brief="status", csr=StatusCsr, doc=""),
-             MapCsr(reg=1, name="select", brief="sel", csr=SelectCsr, doc=""),
+             MapCsr(reg=1, name="select", brief="sel", csr=SelectCsr, doc="""
+             Write data of 0 to select none; count will indicate length of enable chain
+             Write data of 1<<31 to select run clear, counting until enable return is clear
+             """),
              MapCsr(reg=2, name="select_at", brief="sat", csr=SelectAtCsr, doc=""),
              MapCsr(reg=3, name="write_data", brief="wrd", csr=WriteDataCsr, doc=""),
              ]

@@ -129,7 +129,7 @@ For each trigger of N:
     default reset active_low reset_n;
 
     comb bit[32] data_word;
-    comb bit[8] data_byte;
+    clocked bit[8] data_byte = 0;
     comb bit[8] selected_bits;
     comb bit[8] must_match;
     comb bit[8] at_least_one;
@@ -156,16 +156,16 @@ For each trigger of N:
         }
         full_switch (trigger_cfg_byte.byte_sel) {
         case 0: {
-            data_byte = data_word[8;0];
+            data_byte <= data_word[8;0];
         }
         case 1: {
-            data_byte = data_word[8;8];
+            data_byte <= data_word[8;8];
         }
         case 2: {
-            data_byte = data_word[8;16];
+            data_byte <= data_word[8;16];
         }
         default: {
-            data_byte = data_word[8;24];
+            data_byte <= data_word[8;24];
         }
         }
 

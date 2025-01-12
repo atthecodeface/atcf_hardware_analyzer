@@ -1,0 +1,158 @@
+/*a Includes
+ */
+include "analyzer.h"
+include "analyzer_modules.h"
+include "utils::fifo_status.h"
+
+/*a Types */
+/*t t_filter_combs
+ */
+typedef struct
+{
+    t_analyzer_data4 match_value;
+    t_analyzer_data4 must_match;
+    t_analyzer_data4 needs_changing;
+    t_analyzer_data4 changed;
+    bit accept_p1;
+} t_filter_combs;
+
+/*a Module
+ */
+module analyzer_trace_filter( clock clk,
+                           input bit reset_n,
+
+                           input  t_analyzer_data4  din,
+                           output  t_analyzer_data4 dout,
+
+                           input  t_analyzer_filter_cfg filter_cfg
+ )
+"""
+Bits can be marked as must match or must have changed
+
+mask value     bit   last bit  reject  accept
+ 0     0        x       x        0       0
+ 0     1        d       !d       0       1
+ 0     1        d       d        0       0
+ 1     0        0       x        0       0
+ 1     0        1       x        1       0
+ 1     1        0       x        1       0
+ 1     1        1       x        0       0
+
+Reject if there are any rejects
+
+Else Accept if there is at least one accept
+
+Else Accept if the filter is configured for non-changing
+         
+"""
+
+{
+    /*b Default clock and reset
+     */
+    default clock clk;
+    default reset active_low reset_n;
+
+    /*b State and combs */
+    clocked t_analyzer_data4[3] data = {*=0};
+    clocked t_analyzer_data4 data_nc_1 = {*=0} "Bits that need to differ in nc_2 for it to be accepted";
+    clocked t_analyzer_data4 data_nc_2 = {*=0} "Bits that need to differ in nc_1 for it to be accepted";
+
+    clocked bit reject_p1 = 0;
+
+    comb t_filter_combs filter_combs;
+    
+    /*b Filter data pipeline
+     */
+    filter_pipeline "Filter data pipeline": {
+        if (din.valid || data[0].valid) {
+            data[0].valid <= 0;
+            if (filter_cfg.enable) {
+                data[0] <= din;
+            }
+        }
+
+        if (data[0].valid || data[1].valid) {
+            data[1].valid <= 0;
+            if (data[0].valid) {
+                data[1] <= data[0];
+                data_nc_1.valid <= 0;
+                data_nc_1.data_0 <= data[0].data_0 & filter_combs.needs_changing.data_0;
+                data_nc_1.data_1 <= data[0].data_1 & filter_combs.needs_changing.data_1;
+                data_nc_1.data_2 <= data[0].data_2 & filter_combs.needs_changing.data_2;
+                data_nc_1.data_3 <= data[0].data_3 & filter_combs.needs_changing.data_3;
+            }
+        }
+
+        if (data[1].valid || data[2].valid) {
+            data[2].valid <= 0;
+            if (data[1].valid && !reject_p1 && filter_combs.accept_p1) {
+                data[2] <= data[1];
+                data_nc_2 <= data_nc_1;
+            }
+        }
+
+        dout = data[2];
+    }
+
+    /*b Combs in first stage of pipeline
+     *
+     * Roughly an XOR plus 5 levels of logic fo 128bit input with 5-input gates
+     *
+     */
+    filter_data "Filter first stage": {
+        filter_combs.needs_changing.valid = 0;
+        filter_combs.must_match.valid = 0;
+        filter_combs.match_value.valid = 0;
+
+        filter_combs.needs_changing.data_0 = ~filter_cfg.mask.data_0 & filter_cfg.value.data_0;
+        filter_combs.needs_changing.data_1 = ~filter_cfg.mask.data_0 & filter_cfg.value.data_1;
+        filter_combs.needs_changing.data_2 = ~filter_cfg.mask.data_0 & filter_cfg.value.data_2;
+        filter_combs.needs_changing.data_3 = ~filter_cfg.mask.data_0 & filter_cfg.value.data_3;
+
+        filter_combs.match_value.data_0 = filter_cfg.mask.data_0 & filter_cfg.value.data_0;
+        filter_combs.match_value.data_1 = filter_cfg.mask.data_1 & filter_cfg.value.data_1;
+        filter_combs.match_value.data_2 = filter_cfg.mask.data_2 & filter_cfg.value.data_2;
+        filter_combs.match_value.data_3 = filter_cfg.mask.data_3 & filter_cfg.value.data_3;
+        
+        filter_combs.must_match.data_0 = filter_cfg.mask.data_0 & data[1].data_0;
+        filter_combs.must_match.data_1 = filter_cfg.mask.data_0 & data[1].data_1;
+        filter_combs.must_match.data_2 = filter_cfg.mask.data_0 & data[1].data_2;
+        filter_combs.must_match.data_3 = filter_cfg.mask.data_0 & data[1].data_3;
+        
+        reject_p1 <= 0;
+        if (filter_combs.must_match.data_0 != filter_combs.match_value.data_0) {
+            reject_p1 <= 1;
+        }
+        if (filter_combs.must_match.data_1 != filter_combs.match_value.data_1) {
+            reject_p1 <= 1;
+        }
+        if (filter_combs.must_match.data_2 != filter_combs.match_value.data_2) {
+            reject_p1 <= 1;
+        }
+        if (filter_combs.must_match.data_3 != filter_combs.match_value.data_3) {
+            reject_p1 <= 1;
+        }
+    }
+
+    /*b Second stage of pipeline
+     *
+     * Roughly an XOR plus 5 levels of logic fo 128bit input with 5-input gates
+     *
+     */
+    filter_second "Filter second stage": {
+        filter_combs.changed.valid = 0;
+        filter_combs.changed.data_0 = data_nc_2.data_0 ^ data_nc_1.data_0;
+        filter_combs.changed.data_1 = data_nc_2.data_1 ^ data_nc_1.data_1;
+        filter_combs.changed.data_2 = data_nc_2.data_2 ^ data_nc_1.data_2;
+        filter_combs.changed.data_3 = data_nc_2.data_3 ^ data_nc_1.data_3;
+
+        filter_combs.accept_p1 = (filter_cfg.accept_unchanging ||
+                     (filter_combs.changed.data_0 != 0) ||
+                     (filter_combs.changed.data_1 != 0) ||
+                     (filter_combs.changed.data_2 != 0) ||
+                     (filter_combs.changed.data_3 != 0));
+    }
+    
+    /*b Done
+     */
+}

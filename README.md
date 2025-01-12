@@ -78,6 +78,43 @@ A module such as the `apb_target_analyer_access` drives the
 sourcing the `t_analyzer_trace_cfg` to configure the trace and trigger
 modules.
 
+# Analyzer trace modules
+
+An endpoint on the analyzer trace bus should output its data with
+little filtering; it can drive the bus valid on every cycle unless
+there is a good reason not to do so (it might be purely mirroring
+internal state of counters and state machines, for example). A good
+reason might be as it is only capturing valid accesses or data cycles.
+
+As the endpoint may drive the bus on every cycle, but for a particular
+trace setup only a small subset of trace data may need to be
+interrogated, the trace bus can be *filtered* before entering an async
+clock crossing or a trigger module.
+
+The `analyzer_trace_filter` module provides a configurable filter that
+is a pipeline of analyzer data; the filter can be configured so that
+the trace data is invalidated if any of the bits do not match a
+configured value (TCAM-style). Furthermore, the filter can be
+configured to invalidate a trace cycle if the *last* *valid* data has
+the same bit values in a configured set of bits as the new data; this
+enables a trace to only consist of data where certain bits are
+changing (and intermediate trace data where those bits are constant
+are dropped). This is very useful to monitor changes in FSM states;
+the filter is configured to only accept trace data with changing values on
+the bits correspondiong to the FSM state.
+
+Another possiblity is to have a rate-limiter on the trace bus; if a
+filter is only going to produce data on average every 100 cycles, then
+an analyzer trigger might be configurable which takes four or five
+cycles to 'process'; the input data to the trigger should not exceed
+the rate of one-every-five cycles, but the bus might normally
+instantaneously deliver two back-to-back. The analyzer trace bus has
+no *ack*, but the trigger can be treated as virtually driving an *ack*
+signal always high; a generic valid-ack module can then be used, such
+as the double-buffer, with a rate-limited output. This *may* benefit
+from having a small FIFO preceding the rate limiter; the rate of that
+double buffer is configurable at run-time.
+
 # Analyzer trigger modules
 
 ## `analyzer_trigger_simple` module
