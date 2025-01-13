@@ -31,6 +31,8 @@ typedef struct
     bit[2]  byte_of_sram;
 } t_access_combs;
 
+/*a modules
+ */
 extern
 module analyzer_trace_ram_data_path( clock clk,
                                      input bit reset_n,

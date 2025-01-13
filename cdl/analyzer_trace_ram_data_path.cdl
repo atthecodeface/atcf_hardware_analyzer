@@ -126,7 +126,6 @@ module analyzer_trace_ram_data_path( clock clk,
     clocked t_fifo_state fifo_state = {*=0};
     comb t_fifo_combs fifo_combs;
     
-    
     clocked t_reading_state reading_state = {*=0};
     
     clocked t_alu_state alu_state = {*=0};
