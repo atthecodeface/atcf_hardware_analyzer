@@ -7,6 +7,7 @@ typedef bit[14] t_full_byte_address;
 /*t t_alu_op
  */
 typedef enum[4] {
+    alu_op_clear,
     alu_op_write8,
     alu_op_write16,
     alu_op_write32,
@@ -18,17 +19,36 @@ typedef enum[4] {
     alu_op_inc16_add16
 } t_alu_op;
 
+/*t t_address_op
+ */
+typedef enum[3] {
+    address_op_access,
+    address_op_reset_ptrs,
+    address_op_push,
+    address_op_pop,
+} t_address_op;
+
+/*t t_access_resp
+ */
+typedef struct
+{
+    bit            valid;
+    bit[2]         id;
+    bit[32]        data;
+} t_access_resp;
+
 /*t t_access_combs
  */
 typedef struct
 {
-    bit[32] op_data;
-    bit read_enable;
-    t_word_address read_ptr;
-    t_alu_op alu_op;
-    bit     write_enable;
-    t_word_address write_ptr;
-    bit[2]  byte_of_sram;
+    bit            read_enable;
+    bit            write_enable;
+    bit[2]         id;
+    t_address_op   address_op;
+    bit[32]        op_data;
+    t_word_address address;
+    t_alu_op       alu_op;
+    bit[2]         byte_of_sram;
 } t_access_combs;
 
 /*a modules

@@ -1,3 +1,6 @@
+#a Imports
+from enum import IntEnum
+
 #a Structures
 # t_analyzer_data4 */
 t_analyzer_data4 = {
@@ -23,26 +26,45 @@ t_analyzer_trace_cfg_fifo = {
     "enable_push":1,
 }
 
-# /*t t_alu_op
-# #typedef enum[4] {
-# #    alu_op_write8,
-# #    alu_op_write16,
-# #    alu_op_write32,
-# #    alu_op_inc32,
-# #    alu_op_sum32,
-# #    alu_op_min32,
-# #    alu_op_max32,
-# #    alu_op_min_max16,
-# #    alu_op_inc16_add16
-#} t_alu_op;
+# t_address_op
+class t_address_op(IntEnum):
+    width = 3
+    access = 0
+    reset_ptrs = 1
+    push = 2
+    pop = 3
+    pass
+
+# t_alu_op
+class t_alu_op(IntEnum):
+    width = 4
+    clear = 0
+    write8 = 1
+    write16 = 2
+    write32 = 3
+    inc32 = 4
+    sum32 = 5
+    min32 = 6
+    max32 = 7
+    min_max16 = 8
+    inc16_add1 = 9
+    pass
+
+# t_access_resp
+t_access_resp = {
+    "valid": 1,
+    "id": 2,
+    "data": 32,
+}
 
 # t_access_combs
 t_access_combs = {
-    "op_data":32,
     "read_enable":1,
-    "read_ptr": 11,
-    "alu_op": 4, # t_alu_op,
     "write_enable":1,
-    "write_ptr": 11,
+    "id": 2,
+    "address_op": t_address_op.width.value,
+    "address": 11,
+    "op_data":32,
+    "alu_op": t_alu_op.width.value,
     "byte_of_sram":2,
     }
