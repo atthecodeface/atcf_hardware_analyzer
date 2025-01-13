@@ -84,6 +84,8 @@ typedef struct {
 typedef struct {
     bit[2] data_width;
     bit journal;
+    bit fifo_per_ram;
+    bit ram_of_fifo;
     bit enable_push;
 } t_analyzer_trace_cfg_fifo;
 

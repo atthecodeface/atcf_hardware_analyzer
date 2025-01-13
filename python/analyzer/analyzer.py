@@ -23,6 +23,8 @@ t_analyzer_filter_cfg = {
 t_analyzer_trace_cfg_fifo = {
     "data_width":2,
     "journal":1,
+    "fifo_per_ram":1,
+    "ram_of_fifo":1,
     "enable_push":1,
 }
 
@@ -47,7 +49,7 @@ class t_alu_op(IntEnum):
     min32 = 6
     max32 = 7
     min_max16 = 8
-    inc16_add1 = 9
+    inc16_add16 = 9
     pass
 
 # t_access_resp

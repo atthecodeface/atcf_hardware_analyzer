@@ -65,6 +65,9 @@ class AccessOp:
         getattr(obj, pfx+"__byte_of_sram").drive(self.byte_of_sram)
         pass
     @classmethod
+    def atomic(cls, address, data, alu_op):
+        return cls(address_or_op=address, data=data, alu_op=alu_op, write_enable=1, read_enable=1)
+    @classmethod
     def write(cls, address, data, width=32):
         alu_op = {8:t_alu_op.write8, 16:t_alu_op.write16, 32:t_alu_op.write32}[width]
         return cls(address_or_op=address, data=data, alu_op=alu_op, write_enable=1, read_enable=0)
@@ -95,6 +98,8 @@ class AnalyzerTraceRamDataPathTest_Base(ThExecFile):
     access_ops = []
     data_width = 0 # 32-bit
     journal = 0
+    fifo_per_ram = 1
+    ram_of_fifo = 0
     enable_push = 1
     # This can be set at initialization time to reduce the number of explicit test cases
     def __init__(self, **kwargs) -> None:
@@ -108,6 +113,7 @@ class AnalyzerTraceRamDataPathTest_Base(ThExecFile):
     #f run__init
     def run__init(self) -> None:
         self.data_count = 0
+        self.expected_data = self.expected_data[:]
         self.bfm_wait(10)
         pass
     #f tick
@@ -130,6 +136,8 @@ class AnalyzerTraceRamDataPathTest_Base(ThExecFile):
 
         self.trace_cfg_fifo__data_width.drive(self.data_width)
         self.trace_cfg_fifo__journal.drive(self.journal)
+        self.trace_cfg_fifo__ram_of_fifo.drive(self.ram_of_fifo)
+        self.trace_cfg_fifo__fifo_per_ram.drive(self.fifo_per_ram)
         self.trace_cfg_fifo__enable_push.drive(self.enable_push)
         idle = AccessOp()
         idle.drive_access_combs(self, "access_req")
@@ -205,6 +213,145 @@ class AnalyzerTraceRamDataPathTest_3(AnalyzerTraceRamDataPathTest_Base):
     access_ops += [AccessOp.pop() for i in range(100)]
     pass
 
+#c AnalyzerTraceRamDataPathTest_4
+class AnalyzerTraceRamDataPathTest_4(AnalyzerTraceRamDataPathTest_Base):
+    """
+    Check that push8 works
+    """
+    data_width = 1
+    expected_data = []
+    for i in range(0,100,4):
+        expected_data.append(i * 0x01010101 + 0x03020100)
+        expected_data.append(i * 0x01010101 + 0x01010101)
+        expected_data.append(i * 0x01010101 + 0x03020302)
+        expected_data.append(i * 0x01010101 + 0x03030303)
+        pass
+    access_ops = []
+    access_ops += [AccessOp.push(i, width=8) for i in range(100)]
+    access_ops += [AccessOp.pop() for i in range(100)]
+    pass
+
+#c AnalyzerTraceRamDataPathTest_5
+class AnalyzerTraceRamDataPathTest_5(AnalyzerTraceRamDataPathTest_Base):
+    """
+    Check that inc32 works
+    """
+    expected_data = []
+    for i in range(100):
+        expected_data.append(1)
+        pass
+    access_ops = []
+    access_ops += [AccessOp.clear(i, id=0) for i in range(100)]
+    access_ops += [AccessOp.atomic(i, i, t_alu_op.inc32) for i in range(100)]
+    access_ops += [AccessOp.read(i) for i in range(100)]
+    pass
+
+#c AnalyzerTraceRamDataPathTest_6
+class AnalyzerTraceRamDataPathTest_6(AnalyzerTraceRamDataPathTest_Base):
+    """
+    Check that sum32 works
+    """
+    expected_data = []
+    for i in range(50):
+        expected_data.append(i*4+1)
+        pass
+    access_ops = []
+    access_ops += [AccessOp.clear(i, id=0) for i in range(100)]
+    access_ops += [AccessOp.atomic(i//2, i, t_alu_op.sum32) for i in range(100)]
+    access_ops += [AccessOp.read(i) for i in range(50)]
+    pass
+
+#c AnalyzerTraceRamDataPathTest_7
+class AnalyzerTraceRamDataPathTest_7(AnalyzerTraceRamDataPathTest_Base):
+    """
+    Check that inc16_add16 works
+    """
+    expected_data = []
+    for i in range(50):
+        expected_data.append((i*4+1) + 0x20000)
+        pass
+    access_ops = []
+    access_ops += [AccessOp.clear(i, id=0) for i in range(100)]
+    access_ops += [AccessOp.atomic(i//2, i, t_alu_op.inc16_add16) for i in range(100)]
+    access_ops += [AccessOp.read(i) for i in range(50)]
+    pass
+
+#c AnalyzerTraceRamDataPathTest_8
+datav = lambda x: (x*0x12343) & 0xfffff
+class AnalyzerTraceRamDataPathTest_8(AnalyzerTraceRamDataPathTest_Base):
+    """
+    Check that min32 and max32 work
+    """
+    expected_data = []
+    for i in range(50):
+        expected_data.append(min(min(max(datav(i), datav(i+50)), datav(i+100)), datav(i+150)))
+        pass
+    access_ops = []
+    access_ops += [AccessOp.clear(i, id=0) for i in range(100)]
+    access_ops += [AccessOp.atomic(i%50, datav(i), t_alu_op.max32) for i in range(100)]
+    access_ops += [AccessOp.atomic(i%50, datav(i+100), t_alu_op.min32) for i in range(100)]
+    access_ops += [AccessOp.read(i) for i in range(50)]
+    pass
+
+#c AnalyzerTraceRamDataPathTest_9
+class AnalyzerTraceRamDataPathTest_9(AnalyzerTraceRamDataPathTest_Base):
+    """
+    Check that min_max16 works
+    """
+    expected_data = []
+    for i in range(50):
+        m0 = min(datav(i)&0xffff, datav(i+50)&0xffff)
+        m1 = max(datav(i)&0xffff, datav(i+50)&0xffff)
+        expected_data.append((m1<<16)|m0)
+        pass
+    access_ops = []
+    access_ops += [AccessOp.write(i, 0x0000ffff) for i in range(50)]
+    access_ops += [AccessOp.atomic(i%50, datav(i), t_alu_op.min_max16) for i in range(100)]
+    access_ops += [AccessOp.read(i) for i in range(50)]
+    pass
+
+#c AnalyzerTraceRamDataPathTest_10
+class AnalyzerTraceRamDataPathTest_10(AnalyzerTraceRamDataPathTest_Base):
+    """
+    Check that pop at empty, push at full, pop when full, etc
+    """
+    expected_data = []
+    expected_data += [i for i in range(10)]
+    expected_data += [i for i in range(2)]    
+    expected_data += [5000,5001,2,3,4]    
+    access_ops = []
+    access_ops += [AccessOp.pop(id=0) for i in range(10)]
+    access_ops += [AccessOp.push(i) for i in range(2100)]
+    access_ops += [AccessOp.read(i) for i in range(10)]
+    access_ops += [AccessOp.pop() for i in range(2)]
+    access_ops += [AccessOp.push(i+5000) for i in range(5)]
+    access_ops += [AccessOp.read(i) for i in range(5)]
+    pass
+
+#c AnalyzerTraceRamDataPathTest_11
+class AnalyzerTraceRamDataPathTest_11(AnalyzerTraceRamDataPathTest_Base):
+    """
+    Check that pop at empty, push at full, pop when full, etc with journal
+    """
+    journal = 1
+    expected_data = []
+    # Journal 5 entries beyond so that mem[0..4] = 2048+(0..4)
+    expected_data += [2048+i for i in range(5)]
+    # mem[5..9] = 5..9
+    expected_data += [5+i for i in range(5)]
+    # Pop 2 - which should be 5, 6 since it has moved on write_ptr/read_ptr to 2
+    expected_data += [5+i for i in range(2)]    
+    # Journal 5 more to mem[5..] (write_ptr is 10 so that is unaffected)
+    expected_data += [2048, 2049, 2050, 2051, 2052, 5000, 5001, 5002, 5003, 5004, 10]
+    access_ops = []
+    access_ops += [AccessOp.pop(id=0) for i in range(10)]
+    access_ops += [AccessOp.push(i) for i in range(2053)]
+    access_ops += [AccessOp.read(i) for i in range(10)]
+    access_ops += [AccessOp.pop() for i in range(2)]
+    access_ops += [AccessOp.push(i+5000) for i in range(5)]
+    access_ops += [AccessOp.read(i) for i in range(11)]
+    pass
+
 #a Hardware and test instantiation
 #c AnalyzerTraceRamDataPathHardware
 class AnalyzerTraceRamDataPathHardware(HardwareThDut):
@@ -227,6 +374,15 @@ class TestAnalyzerTraceRamDataPath(TestCase):
     _tests = {"0": (AnalyzerTraceRamDataPathTest_0, 2*1000, {}),
               "1": (AnalyzerTraceRamDataPathTest_1, 2*1000, {}),              
               "2": (AnalyzerTraceRamDataPathTest_2, 2*1000, {}),              
-              "smoke": (AnalyzerTraceRamDataPathTest_3, 2*1000, {}),              
+              "3": (AnalyzerTraceRamDataPathTest_3, 2*1000, {}),              
+              "4": (AnalyzerTraceRamDataPathTest_4, 2*1000, {}),              
+              "5": (AnalyzerTraceRamDataPathTest_5, 2*1000, {}),              
+              "6": (AnalyzerTraceRamDataPathTest_6, 2*1000, {}),              
+              "7": (AnalyzerTraceRamDataPathTest_7, 2*1000, {}),              
+              "8": (AnalyzerTraceRamDataPathTest_8, 2*1000, {}),              
+              "9": (AnalyzerTraceRamDataPathTest_9, 2*1000, {}),              
+              "10": (AnalyzerTraceRamDataPathTest_10, 10*1000, {}),              
+              "11": (AnalyzerTraceRamDataPathTest_11, 10*1000, {}),              
+              "smoke": (AnalyzerTraceRamDataPathTest_11, 10*1000, {}),              
     }
 

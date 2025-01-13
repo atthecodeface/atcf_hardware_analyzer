@@ -40,6 +40,10 @@ typedef struct
     t_full_byte_address num_entries;
     bit     full;
     bit     not_empty;
+    bit pushed;
+    bit popped;
+    bit overflowed;
+    bit underflowed;
 } t_fifo_state;
 
 /*t t_fifo_combs
@@ -50,6 +54,7 @@ typedef struct
     bit push;
     bit pop;
     bit push_journal_full;
+    bit nearly_full;
     bit reset_ptrs;
     t_full_byte_address ptr_inc;
 } t_fifo_combs;
@@ -170,10 +175,13 @@ module analyzer_trace_ram_data_path( clock clk,
         }
         case address_op_pop: {
             fifo_combs.pop = fifo_state.not_empty;
+            fifo_state.underflowed <= 1;
         }
         }
-        
-
+        fifo_combs.nearly_full = fifo_state.num_entries[11;3] == -1;
+        if (trace_cfg_fifo.fifo_per_ram) {
+            fifo_combs.nearly_full = fifo_state.num_entries[11;2] == -1;
+        }
             fifo_combs.push_journal_full = 0;
             if (fifo_combs.push) {
                 if (fifo_state.full && trace_cfg_fifo.journal) {
@@ -193,12 +201,16 @@ module analyzer_trace_ram_data_path( clock clk,
                 fifo_state.num_entries <= fifo_state.num_entries - fifo_combs.ptr_inc;
                 fifo_state.not_empty <= (fifo_state.num_entries != fifo_combs.ptr_inc);
                 fifo_state.full <= 0;
-            } elsif (fifo_combs.push) {
+            } elsif (fifo_combs.push && !fifo_combs.push_journal_full) {
                 fifo_state.num_entries <= fifo_state.num_entries + fifo_combs.ptr_inc;
                 fifo_state.not_empty <= 1;
-                fifo_state.full <= (fifo_state.num_entries[11;3] == -1);
+                fifo_state.full <= fifo_combs.nearly_full;
             }
+            fifo_state.popped <= fifo_combs.pop;
+            fifo_state.pushed <= fifo_combs.push;
             if (fifo_combs.reset_ptrs) {
+                fifo_state.overflowed <= 0;
+                fifo_state.underflowed <= 0;
                 fifo_state.num_entries <= 0;
                 fifo_state.not_empty <= 0;
                 fifo_state.full <= 0;
@@ -277,7 +289,7 @@ module analyzer_trace_ram_data_path( clock clk,
                 } else {
                     alu_combs.write_byte_result[16;0] = alu_state.op_data[16;0];
                 }
-            } else {
+            } elsif (alu_state.alu_op == alu_op_write32) {
                 alu_combs.write_byte_result = alu_state.op_data;
             }
 
@@ -405,10 +417,10 @@ module analyzer_trace_ram_data_path( clock clk,
      */
     fifo_status_logic : {
         fifo_status = {*=0};
-        // .pushed = 0; 
-        // fifo_status.poped = 0; 
-        // bit     overflowed;
-        // bit     underflowed;
+        fifo_status.pushed = fifo_state.pushed;
+        fifo_status.popped = fifo_state.popped;
+        fifo_status.overflowed = fifo_state.overflowed;
+        fifo_status.underflowed = fifo_state.underflowed;
         fifo_status.empty = !fifo_state.not_empty;
         fifo_status.full = fifo_state.full;
         fifo_status.entries_full[14;0] = fifo_state.num_entries;

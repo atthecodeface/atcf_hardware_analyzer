@@ -12,6 +12,7 @@ dut.access_req__address[10:0]
 dut.access_req__op_data[31:0]
 @1400200
 -Access Req
+
 @c00200
 -Access Resp
 @22
@@ -21,8 +22,7 @@ dut.access_resp__id[1:0]
 dut.access_resp__valid
 @1400200
 -Access Resp
-@201
--
+
 @c00200
 -Fifo combs
 @28
@@ -35,8 +35,7 @@ dut.fifo_combs__reset_ptrs
 dut.fifo_combs__ptr_inc[13:0]
 @1400200
 -Fifo combs
-@201
--
+
 @c00200
 -Fifo state
 @28
@@ -48,6 +47,7 @@ dut.fifo_state__write_ptr[13:0]
 dut.fifo_state__num_entries[13:0]
 @1400200
 -Fifo state
+
 @c00200
 -Sram Write
 @28
@@ -57,16 +57,28 @@ dut.trace_sram.address_0[10:0]
 dut.trace_sram.write_data_0[31:0]
 @1400200
 -Sram Write
+
 @c00200
 -Sram Read
-@28
-dut.trace_sram.address_1[10:0]
 @28
 dut.trace_sram.select_1
 @22
+dut.trace_sram.address_1[10:0]
 dut.trace_sram.data_out_1[31:0]
-@201
--
 @1400200
 -Sram Read
+
 @c00200
+-Alu state
+@28
+dut.alu_state__byte_of_sram[1:0]
+dut.alu_state__id[1:0]
+dut.alu_state__valid
+dut.alu_state__write_enable
+@22
+dut.alu_state__address[10:0]
+dut.alu_state__alu_op[3:0]
+dut.alu_state__op_data[31:0]
+dut.alu_state__mem_data[31:0]
+@1400200
+-Alu state
