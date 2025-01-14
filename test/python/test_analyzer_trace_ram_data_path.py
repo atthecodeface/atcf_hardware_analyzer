@@ -352,8 +352,72 @@ class AnalyzerTraceRamDataPathTest_11(AnalyzerTraceRamDataPathTest_Base):
     access_ops += [AccessOp.read(i) for i in range(11)]
     pass
 
+#c AnalyzerTraceRamDataPathTest_12
+class AnalyzerTraceRamDataPathTest_12(AnalyzerTraceRamDataPathTest_Base):
+    """
+    Test forwarding paths
+    """
+    journal = 1
+    expected_data = [0x01010101,
+                     0x02020202,
+                     0x03030303,
+                     0x04040404,
+                     0x05050505,
+                     0x06060606,
+                     0x07070707,
+                     0x08080808,
+                     0x09090909,
+                     0x0,
+                     ]
+    access_ops = []
+    access_ops += [AccessOp.clear(i, id=0) for i in range(10)]
+    access_ops += [
+        AccessOp.atomic(i, (i+1)<<(8*n), t_alu_op.sum32)
+        for (i,n) in [(0,0),
+                      (1,0),
+                      (1,1),
+                      (0,1),
+                      (1,2),
+                      (1,3),
+                      (0,2),
+                      (0,3),
+
+                      (2,0),
+                      (3,0),
+                      (4,0),
+                      (2,1),
+                      (3,1),
+                      (4,1),
+                      (2,2),
+                      (3,2),
+                      (4,2),
+                      (2,3),
+                      (3,3),
+                      (4,3),
+
+                      (5,0),
+                      (6,0),
+                      (7,0),
+                      (8,0),
+                      (5,1),
+                      (6,1),
+                      (7,1),
+                      (8,1),
+                      (5,2),
+                      (6,2),
+                      (7,2),
+                      (8,2),
+                      (5,3),
+                      (6,3),
+                      (7,3),
+                      (8,3),
+        ]
+        ]
+    access_ops += [AccessOp.read(i) for i in range(10)]
+    pass
+
 #a Hardware and test instantiation
-#c AnalyzerTraceRamDataPathHardware
+#c AnalyzerTraceRamDataPathHardwarew
 class AnalyzerTraceRamDataPathHardware(HardwareThDut):
     clock_desc = [("clk",(0,2,2)),
     ]
@@ -383,6 +447,7 @@ class TestAnalyzerTraceRamDataPath(TestCase):
               "9": (AnalyzerTraceRamDataPathTest_9, 2*1000, {}),              
               "10": (AnalyzerTraceRamDataPathTest_10, 10*1000, {}),              
               "11": (AnalyzerTraceRamDataPathTest_11, 10*1000, {}),              
-              "smoke": (AnalyzerTraceRamDataPathTest_11, 10*1000, {}),              
+              "12": (AnalyzerTraceRamDataPathTest_12, 2*1000, {}),              
+              "smoke": (AnalyzerTraceRamDataPathTest_12, 2*1000, {}),              
     }
 

@@ -5,6 +5,7 @@ include "analyzer_trace_ram.h"
 include "utils::fifo_status.h"
 include "clocking::clock_timer.h"
 include "std::srams.h"
+include "std::valid_data.h"
 
 /*a Constants
  */
@@ -147,6 +148,9 @@ module analyzer_trace_ram_data_path( clock clk,
     comb t_alu_combs alu_combs;
     
     clocked t_writeback_state writeback_state = {*=0};
+
+    clocked t_vdata_32 write_over_read_data = {*=0};
+    
     clocked t_access_resp access_resp = {*=0} "Valid with writeback";
 
     net bit[32] sram_read_data;
@@ -368,6 +372,9 @@ module analyzer_trace_ram_data_path( clock clk,
         alu_state.byte_of_sram <= reading_state.byte_of_sram;
 
         alu_state.mem_data <= sram_read_data;
+        if (write_over_read_data.valid) {
+            alu_state.mem_data <= write_over_read_data.data;
+        }
         if (reading_state.fwd_from_writeback) {
             alu_state.mem_data <= writeback_state.data;
         }
@@ -384,11 +391,20 @@ module analyzer_trace_ram_data_path( clock clk,
         writeback_state.write_enable <= alu_state.write_enable;
         writeback_state.address <= alu_state.address;
         writeback_state.data <= alu_combs.result;
+
+        write_over_read_data.valid <= 0;
+        if (writeback_state.write_enable && access_combs.read_enable) {
+            if (writeback_state.address == access_combs.address) {
+                write_over_read_data.valid <= 1;
+                write_over_read_data.data <= writeback_state.data;
+            }
+        }
+
     }
 
     /*b SRAM datapath
      */
-    store_data "Store data in FIFO and read out":
+     store_data "Store data in FIFO and read out":
         {
                 se_sram_mrw_2_2048x32 trace_sram( sram_clock_0 <- clk,
                                                      select_0         <= writeback_state.write_enable,
