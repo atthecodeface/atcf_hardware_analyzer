@@ -16,9 +16,19 @@ The concept behind the ATCF analyzer is:
   with clock gating provided to maintain low power when debugging is
   disabled.
 
-* The combined data is analyzed by a *trigger* mechanism, which sits
+* The combined data can be *filtered*, which discards some data cycles
+  when the data pattern does not match some filter, or if the data is
+  unchanged (in some set of bits) from the last valid data. This
+  allows a trigger to operate only when particular data changes on a
+  bus, or for only (e.g.) particular states of a state machine, or
+  particular DRAM addresses.
+
+* The filtered data is analyzed by a *trigger* mechanism, which sits
   alongside a pipeline of the analyzer data and produces a *trigger
-  action* to coincide with some data
+  action* to coincide with some data; the triggers may be simple
+  mask-and-match, or they might be somewhat stateful, and take a few
+  cycles to operate (which can require the data in to be throttled to
+  a maximum rate).
 
 * The *trigger action* and data are fed to a *trace* module; this
   terminates the data in some fashion - perhaps by storing one or more
@@ -28,6 +38,51 @@ The concept behind the ATCF analyzer is:
   control portion of the analyzer bus (to enable particular components
   and select potential data sources); configure the trigger; configure
   the trace; request the trace data and present it over CSR reads.
+
+## Real world use cases
+
+In past silicon implementations the main use of the logic analyzers is
+in capturing traces in the SRAMs, for data that is *changing* and has
+certain bits set to certain values; frequently the traces will be just
+the data, and some times it would be the data plus the time at which
+the data was seen. A trigger might cause the trace to stop.
+
+### Trace bus transactions until an aborted transaction (match) is seen
+
+The analyzer data trace bus would be sourced from a bus arbiter,
+containing valid data on every clock cycle. This data is *filtered* so
+that only cycles that have (for example) a non-zero read/write enable
+or response control; it is then filtered further so that only the
+portion of the trace data releveant to transactions is checked to see
+if it is changing (if it has the same value then recording it is
+unnecessary, and it consumes some of the limited trace FIFO space).
+
+Once filtered the trace data is fed in to the trigger, which is
+configured to capture data on every valid cycle; a matching trigger is
+also set to look out for the signals indicating an aborted
+transaction: when this occurs it *halts* the capture.
+
+### Histograms of access times
+
+One trigger detects the start of a transaction; it records the time,
+and the id number and target of the transaction (which are in the
+trace data).
+
+A second trigger detects the end of a transaction of the given id;
+when this occurs it captures the time delta and the recorded data; the
+histogram is generated given the recorded target as the 'bucket
+value', and using the time deltas with a min/max, and an add/increment
+capture.
+
+The trigger is run by the user for a certain amount of time, and then
+stopped by hand.
+
+The data in the RAM then contains histograms which can provided the
+average time taken for an access to any target, as well as the minimum
+and maximum times recorded.
+
+Instead of a target, an internal address might be used; this might
+need to be bucketed to monitor only particular regions of memory.
 
 ## Analyzer trace bus
 

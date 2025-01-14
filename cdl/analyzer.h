@@ -1,23 +1,6 @@
-/** Copyright (C) 2020,  Gavin J Stark.  All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- * @file   analyzer.h
- * @brief  Types for the analyzer data/control buses
- *
- * Header file for the types for the analyzer data/control buses
- *
+/*a Includes
  */
+include "std::valid_data.h"
 
 /*a Types for the analyzer bus (ctl and data) */
 /*t t_analyzer_mst - Master interface towards target */
@@ -101,14 +84,59 @@ typedef struct {
     bit[2] timer_div;
 } t_analyzer_trace_cfg;
 
+/*a Types for analyzer trigger */
+/*t t_analyzer_trigger_timer
+ */
+typedef struct
+{
+    bit[32] value;
+    bit[32] timer_delta "Valid if recorded_delta is valid";
+    t_vdata_32 recorded_value;
+    t_vdata_32 recorded_delta;
+} t_analyzer_trigger_timer;
+
+/*t t_analyzer_trigger_ctl
+ */
+typedef struct {
+    bit enable;
+    bit clear;
+    bit running;
+} t_analyzer_trigger_ctl;
+
+/*t t_analyzer_trigger_cfg_actions
+ */
+typedef struct {
+    bit  halt_capture;
+    bit  record_data;
+    bit  record_time;
+    bit  record_invalidate;
+    bit[2]  capture_data;
+} t_analyzer_trigger_cfg_actions;
+
 /*t t_analyzer_trigger_cfg_byte
  */
 typedef struct {
-    bit[2] data_sel;
-    bit[2] byte_sel;
+    bit ignore_valid;
+    bit[3] byte_sel;
     bit[8] mask;
     bit[8] match;
+    bit[2] cond_sel;
 } t_analyzer_trigger_cfg_byte;
+
+/*t t_analyzer_trigger_cfg_data_src
+ */
+typedef enum[2] {
+    atc_ds_data_0,
+    atc_ds_data_1,
+    atc_ds_data_2,
+    atc_ds_data_3,
+} t_analyzer_trigger_cfg_data_src;
+
+/*t t_analyzer_trigger_cfg_match_data_src
+ */
+typedef enum[3] {
+    blah,
+} t_analyzer_trigger_cfg_match_data_src;
 
 /*t t_analyzer_trigger_cfg_data_action
  */
@@ -117,9 +145,9 @@ typedef struct {
     bit[3] cond_1;
     bit[3] cond_2;
     bit[3] cond_3;
-    bit only_if_changing;
     bit record_time;
     bit record_data;
+    bit halt_capture;
     bit[2] capture_data;
 } t_analyzer_trigger_cfg_data_action;
 
@@ -138,7 +166,23 @@ typedef enum[3] {
  */
 typedef struct {
     bit enable;
+    bit clear;
+    bit start;
+    bit stop;
     bit[2] timer_div;
+    bit[48] action_set "Sixteen 3-bit action sets; the index is taken from bundling the 4 matched bits";
+    t_analyzer_trigger_cfg_actions actions_0 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_actions actions_1 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_actions actions_2 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_actions actions_3 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_actions actions_4 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_actions actions_5 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_actions actions_6 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_actions actions_7 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_data_src data_src_0;
+    t_analyzer_trigger_cfg_data_src data_src_1;
+    t_analyzer_trigger_cfg_match_data_src match_data_src_0;
+    t_analyzer_trigger_cfg_match_data_src match_data_src_1;
     t_analyzer_trigger_cfg_byte tb_0;    
     t_analyzer_trigger_cfg_byte tb_1;    
     t_analyzer_trigger_cfg_byte tb_2;    
@@ -151,8 +195,15 @@ typedef struct {
 
 /*t t_analyzer_trace_data_op
  */
-typedef struct {
-    bit capture;
+typedef enum[3] {
+    alu_op_push,
+    alu_op_write,
+    alu_op_inc,
+    alu_op_sum,
+    alu_op_min,
+    alu_op_max,
+    alu_op_min_max,
+    alu_op_inc_add
 } t_analyzer_trace_data_op;
 
 /*t t_analyzer_trace_op4

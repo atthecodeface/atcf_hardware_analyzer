@@ -1,0 +1,95 @@
+/*a Includes
+ */
+include "std::valid_data.h"
+include "analyzer.h"
+
+/*a Module
+ */
+module analyzer_trace_data_offset_bound( clock clk,
+                                         input bit reset_n,
+                                         input  t_analyzer_data4 p0_data,
+
+                                         input  t_analyzer_trace_cfg_ofs trace_cfg,
+
+                                         output t_vdata_32 p2_data
+ )
+"""
+"""
+
+{
+    /*b Default clock and reset
+     */
+    default clock clk;
+    default reset active_low reset_n;
+
+    /*b State and combs */
+    comb bit[33]    p01_data_offset "Data offset minus base";
+    comb bit[32]    p01_data_offset_shf "Data offset minus base shifted right";
+
+    clocked bit p1_data_valid  = {*=0} "Asserted if data is valid";
+    clocked bit[32]    p1_data_offset = 0;
+    clocked bit        p1_data_offset_is_neg = 0;
+
+    comb bit[33]    p12_data_offset_bkt_1;
+    comb bit[33]    p12_data_offset_bkt_2;
+    comb bit[33]    p12_data_offset_bkt_3;
+    comb bit[33]    p12_data_offset_bkt_end;
+    comb bit        p12_data_offset_is_max;
+    comb bit[11]    p12_data_offset_bkt;
+    comb bit[11]    p12_data_offset_result;
+
+    clocked t_vdata_32 p2_data  = {*=0} ;
+    
+    /*b Data offset logic
+     */
+    data_offset_path "Derive actual data offset": {
+        p01_data_offset = bundle(1b0, p0_data.data_0) -  bundle(9b0, trace_cfg.base);
+        if (trace_cfg.use_data_1) {
+            p01_data_offset = bundle(1b0, p0_data.data_1) - bundle(9b0, trace_cfg.base);
+        }
+
+        p01_data_offset_shf = p01_data_offset[32;0];
+        if (trace_cfg.shift<20) {
+            p01_data_offset_shf = p01_data_offset[32;0] >> trace_cfg.shift;
+        }
+
+        if (p0_data.valid || p1_data_valid) {
+            p1_data_valid <= p0_data.valid;
+            p1_data_offset_is_neg <= p01_data_offset[32];
+            p1_data_offset <= p01_data_offset_shf;
+        }
+
+
+        p12_data_offset_bkt_1 = bundle(1b0, p1_data_offset) - 0x200;
+        p12_data_offset_bkt_2 = bundle(1b0, p1_data_offset) - 0xa00;
+        p12_data_offset_bkt_3 = bundle(1b0, p1_data_offset) - 0x2a00;
+        p12_data_offset_bkt_end = bundle(1b0, p1_data_offset) - 0xaa00;
+        p12_data_offset_is_max = !p12_data_offset_bkt_end[32];
+
+        p12_data_offset_bkt = 0;
+        if (p12_data_offset_is_max) {
+            p12_data_offset_bkt = -1;
+        } elsif (!p12_data_offset_bkt_3[32]) {
+            p12_data_offset_bkt = bundle(2b11, p12_data_offset_bkt_3[9;6]);
+        } elsif (!p12_data_offset_bkt_2[32]) {
+            p12_data_offset_bkt = bundle(2b10, p12_data_offset_bkt_2[9;4]);
+        } elsif (!p12_data_offset_bkt_1[32]) {
+            p12_data_offset_bkt = bundle(2b01, p12_data_offset_bkt_1[9;2]);
+        } else { // assume offset >=0 for now
+            p12_data_offset_bkt = bundle(2b00, p1_data_offset[9;0]);
+        }
+
+        p12_data_offset_result = p12_data_offset_bkt;
+        if (p1_data_offset_is_neg) {
+            p12_data_offset_result = 0;
+        } elsif (trace_cfg.no_bkts) {
+            p12_data_offset_result = p1_data_offset[11;0];
+        }
+
+        if (p1_data_valid || p2_data.valid) {
+            p2_data.valid <= p1_data_valid;
+            p2_data.data <= bundle(21b0, p12_data_offset_result);
+        }
+
+    }
+}

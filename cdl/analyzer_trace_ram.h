@@ -1,3 +1,9 @@
+/*a Includes
+ */
+include "utils::fifo_status.h"
+
+/*a Types
+ */
 /*t t_word_address */
 typedef bit[11] t_word_address;
 

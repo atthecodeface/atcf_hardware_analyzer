@@ -1,107 +1,37 @@
-/** @copyright (C) 2004-2019,  Gavin J Stark.  All rights reserved.
- *
- * @copyright
- *    Licensed under the Apache License, Version 2.0 (the "License");
- *    you may not use this file except in compliance with the License.
- *    You may obtain a copy of the License at
- *     http://www.apache.org/licenses/LICENSE-2.0.
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
- *
- * @file   analyzer_trace_ram.cdl
- * @brief  A sophisticated logical analyzer trace RAM
- *
- * Updated from the Embisi-gip analyzer module
- *
- * Takes an analyzer operation in and records it in a pair of 8kB SRAMs
- *
- * Can use the SRAM as FIFO or journal, and for histograms/stats
- *
- */
-
 /*a Includes
  */
 include "analyzer.h"
-include "analyzer_trace_ram.h"
-include "utils::fifo_status.h"
-include "clocking::clock_timer.h"
-include "std::srams.h"
+include "analyzer_trigger.h"
+include "std::valid_data.h"
 
 /*a Types */
-/*t t_timer_combs
+/*t t_match_combs
  */
 typedef struct
 {
-    bit record_timer;
-    bit[32] timer_delta;
-} t_timer_combs;
+    bit[8] data_byte;
+    bit[8] selected_bits;
+    bit[8] must_match;
+    bit[8] at_least_one;
+    bit next_matched;
+} t_match_combs;
 
-/*t t_timer_state
+/*t t_match_state
  */
 typedef struct
 {
-    bit[32] value;
-    bit[32] recorded_value;
-} t_timer_state;
-
-/*t t_data_value_combs
- */
-typedef struct
-{
-    bit[32] p0_data_in;
-    bit[33] p0_data_value "Data in minus base";
-
-    bit     p1_data_is_neg;
-    bit[32] p1_data_shf;
-    bit[64] p1_data_mask;
-    bit[32] p1_data_result;
-    bit[32] p1_data_unused;
-} t_data_value_combs;
-
-/*t t_data_value_state
- */
-typedef struct
-{
-    bit[33] p1_data_value "Data in minus base";
-    bit[32] p2_data_value;
-} t_data_value_state;
-
-/*t t_data_ofs_combs
- */
-typedef struct
-{
-    bit[33]    p0_data_offset "Data offset minus base";
-    bit        p0_data_offset_is_neg  "Asserted if data offset < base";
-    bit[32]    p0_data_offset_shf "Data offset minus base shifted right";
-
-    bit[33]    p1_data_offset_bkt_1;
-    bit[33]    p1_data_offset_bkt_2;
-    bit[33]    p1_data_offset_bkt_3;
-    bit[33]    p1_data_offset_bkt_end;
-    bit        p1_data_offset_is_max;
-    bit[11]    p1_data_offset_bkt;
-    bit[11]    p1_data_offset_result;
-} t_data_ofs_combs;
-
-/*t t_data_ofs_state
- */
-typedef struct
-{
-    bit[32]    p1_data_offset;
-    bit        p1_data_offset_is_neg;
-    bit[11]    p2_data_offset;
-} t_data_ofs_state;
+    bit valid;
+    bit data_match;
+    bit last_data_match;
+} t_match_state;
 
 /*a Module
  */
 module analyzer_trigger_simple_byte( clock clk,
                                      input bit reset_n,
 
-                                     input  t_analyzer_data4 din,
-                                     output bit[8] match_conds,
+                                     input  t_vdata_32 match_data,
+                                     output bit matched,
                                      input  t_analyzer_trigger_cfg_byte trigger_cfg_byte
  )
 """
@@ -120,6 +50,13 @@ For each trigger of N:
 
 * Output X, changed, matched, !matched, matched & changed, !matched & changed
 
+This has a pipeline delay of two:
+
+* Mux input data to selected byte
+
+* Store stuff
+
+    
 """
 
 {
@@ -128,65 +65,49 @@ For each trigger of N:
     default clock clk;
     default reset active_low reset_n;
 
-    comb bit[32] data_word;
-    clocked bit[8] data_byte = 0;
-    comb bit[8] selected_bits;
-    comb bit[8] must_match;
-    comb bit[8] at_least_one;
-    comb bit next_matched;
-    clocked bit matched = 0;
-    clocked bit last_matched = 0;
+    comb t_match_combs match_combs;
+    clocked t_match_state match_state = {*=0};
+    comb bit[4] bundled_matches;
     
     /*b Timer value state
      */
     timer_value_logic "Timer value logic": {
-        full_switch (trigger_cfg_byte.data_sel) {
-        case 0: {
-            data_word = din.data_0;
-        }
-        case 1: {
-            data_word = din.data_1;
-        }
-        case 2: {
-            data_word = din.data_2;
-        }
-        default: {
-            data_word = din.data_3;
-        }
-        }
         full_switch (trigger_cfg_byte.byte_sel) {
         case 0: {
-            data_byte <= data_word[8;0];
+            match_combs.data_byte = match_data.data[8;0];
         }
         case 1: {
-            data_byte <= data_word[8;8];
+            match_combs.data_byte = match_data.data[8;8];
         }
         case 2: {
-            data_byte <= data_word[8;16];
+            match_combs.data_byte = match_data.data[8;16];
         }
         default: {
-            data_byte <= data_word[8;24];
+            match_combs.data_byte = match_data.data[8;24];
         }
         }
 
-        selected_bits = data_byte & trigger_cfg_byte.mask;
-        must_match    = trigger_cfg_byte.match & trigger_cfg_byte.mask;
-        at_least_one  = trigger_cfg_byte.match & ~trigger_cfg_byte.mask;
-        next_matched = (selected_bits == must_match);
-        if ((at_least_one != 8h0) && ((selected_bits & at_least_one) == 0)) {
-            next_matched = 0;
+        match_combs.must_match    = trigger_cfg_byte.match & trigger_cfg_byte.mask;
+        match_combs.at_least_one  = trigger_cfg_byte.match & ~trigger_cfg_byte.mask;
+        match_combs.selected_bits = trigger_cfg_byte.mask & match_combs.data_byte;
+        match_combs.next_matched = (match_combs.selected_bits == match_combs.must_match);
+        if ((match_combs.at_least_one != 8h0) && ((match_combs.selected_bits & match_combs.at_least_one) == 0)) {
+            match_combs.next_matched = 0;
         }
-        if (din.valid) {
-            matched <= next_matched;
-            last_matched <= matched;
+
+        match_state.valid <= 0;
+        if (match_data.valid || trigger_cfg_byte.ignore_valid) {
+            match_state.data_match <= match_combs.next_matched;
+            match_state.last_data_match <= match_state.data_match;
+            match_state.valid <= 1;
         }
-        match_conds = bundle( 3b111,
-                              (last_matched ^ matched),
-                              ~matched & last_matched,
-                              matched & !last_matched,
-                              ~matched,
-                              matched
-                            );
+
+        bundled_matches = bundle( (match_state.data_match ^ match_state.last_data_match),
+                                  ~match_state.data_match & match_state.last_data_match,
+                                  match_state.data_match & !match_state.last_data_match,
+                                  match_state.data_match
+            );
+        matched = bundled_matches[ trigger_cfg_byte.cond_sel ] & match_state.valid;
     }
     
     /*b Done

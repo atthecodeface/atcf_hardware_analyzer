@@ -1,0 +1,156 @@
+/*a Includes
+ */
+include "analyzer.h"
+include "analyzer_modules.h"
+include "analyzer_trigger.h"
+include "analyzer_trace_ram.h"
+include "utils::fifo_status.h"
+include "clocking::clock_timer.h"
+include "std::srams.h"
+include "std::valid_data.h"
+
+/*a Constants
+ */
+constant integer analyzer_config_trace_width=4 """If less than 4 then the appropriate top data values are zeroed""" ;
+
+/*a Module
+ */
+module analyzer_trigger_minimal( clock clk,
+                           input bit reset_n,
+
+                           input  t_analyzer_data4  din,
+                           output  t_analyzer_data4 dout,
+
+                           output  t_analyzer_trace_op4 trace_op,
+                           input t_timer_value timer_value,
+
+                           input  t_analyzer_trigger_cfg trigger_cfg_in
+ )
+"""
+This module is designed to trigger on an 8-bit mask/match of one byte of the input data
+
+The output data can be data in or the timer value
+"""
+
+{
+    /*b Default clock and reset
+     */
+    default clock clk;
+    default reset active_low reset_n;
+
+    /*b State and combs */
+    comb t_vdata_32 match_data;
+    comb t_vdata_32 zero_match_data;
+
+    net bit[2] p1_matched;
+    clocked t_analyzer_trigger_cfg_actions p2_capture_actions = {*=0};
+
+    clocked t_analyzer_data4[3] data = {*=0};
+
+    clocked t_analyzer_trigger_cfg trigger_cfg = {*=0};
+    comb t_analyzer_trigger_cfg_actions[4] trigger_cfg_actions;
+    net t_analyzer_trigger_ctl trigger_ctl;
+    net t_analyzer_trigger_timer trigger_timer;
+
+    /*b Trigger control and timer
+    */
+    trigger_ctl_and_timer_logic: {
+        analyzer_trigger_control ctrl( clk <- clk,
+                                  reset_n <= reset_n,
+                                  trigger_cfg <= trigger_cfg,
+                                  halt_trigger <= p2_capture_actions.halt_capture,
+                                  trigger_ctl => trigger_ctl
+            );
+        analyzer_trigger_timer timer( clk <- clk,
+                                      reset_n <= reset_n,
+                                      trigger_cfg <= trigger_cfg,
+                                      trigger_ctl <= trigger_ctl,
+                                      timer_value <= timer_value,
+                                      record_time <= 1b0,
+                                      trigger_timer => trigger_timer
+            );
+    }
+
+    /*b Data pipeline
+     */
+    data_pipeline "Data pipeline": {
+        if (din.valid || data[0].valid) {
+            data[0].valid <= 0;
+            if (trigger_ctl.enable) {
+                data[0] <= din;
+            }
+        }
+
+        for (i; 2) {
+            if (data[i].valid || data[i+1].valid) {
+                data[i+1].valid <= 0;
+                if (data[i].valid) {
+                    data[i+1] <= data[i];
+                }
+            }
+        }
+
+        if (analyzer_config_trace_width <= 3) {
+            data[0].data_3 <= 0;
+        }
+        if (analyzer_config_trace_width <= 2) {
+            data[0].data_2 <= 0;
+        }
+        if (analyzer_config_trace_width <= 1) {
+            data[0].data_1 <= 0;
+        }
+    }
+
+    /*b P0 to P1 logic; select data for matches
+     */
+    p01_logic "P0 to P1 logic; select data for matches": {
+        if (trigger_cfg_in.enable || trigger_cfg.enable) {
+            trigger_cfg <= trigger_cfg_in;
+        }
+
+        trigger_cfg_actions[0] = trigger_cfg.actions_0;
+        trigger_cfg_actions[1] = trigger_cfg.actions_1;
+        trigger_cfg_actions[2] = trigger_cfg.actions_2;
+        trigger_cfg_actions[3] = trigger_cfg.actions_3;
+
+        match_data.valid = data[0].valid;
+        zero_match_data = {*=0};
+
+        full_switch (trigger_cfg.data_src_0) {
+            case 0: { match_data.data = data[0].data_0; }
+            case 1: { match_data.data = data[0].data_1; }
+            case 2: { match_data.data = data[0].data_2; }
+            default: { match_data.data = data[0].data_3; }
+        }
+
+        analyzer_trigger_simple_byte t0( clk <- clk,
+                                         reset_n <= reset_n,
+                                         match_data_0 <= match_data,
+                                         match_data_1 <= zero_match_data,
+                                         matched => p1_matched[0],
+                                         trigger_cfg_byte <= trigger_cfg.tb_0
+            );
+
+        analyzer_trigger_simple_byte t1( clk <- clk,
+                                         reset_n <= reset_n,
+                                         match_data_0 <= match_data,
+                                         match_data_1 <= zero_match_data,
+                                         matched => p1_matched[1],
+                                         trigger_cfg_byte <= trigger_cfg.tb_1
+            );
+
+        p2_capture_actions <= trigger_cfg_actions[p1_matched];
+
+        trace_op = {*=0};
+        dout = data[2];
+
+        if (trigger_ctl.enable) {
+            trace_op.capture[2;0] = p2_capture_actions.capture_data[2;0];
+            dout.valid = 0;
+        }
+       
+     }
+
+    /*b Done
+     */
+}

@@ -1,27 +1,9 @@
-/** Copyright (C) 2020,  Gavin J Stark.  All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- * @file   analyzer_modules.h
- * @brief  Modules for logic analyzer tying
- *
- * Header file for the types and CDL modules for the analyzer
- *
- */
-
 /*a Includes */
+include "std::valid_data.h"
 include "apb::apb.h"
+include "clocking::clock_timer.h"
 include "analyzer.h"
+include "analyzer_trigger.h"
 
 /*a Modules */
 /*m analyzer_mux_8 */
@@ -177,11 +159,66 @@ extern
 module analyzer_trigger_simple_byte( clock clk,
                                      input bit reset_n,
 
-                                     input  t_analyzer_data4 din,
-                                     output bit[8] match_conds,
+                                     input  t_vdata_32 match_data_0,
+                                     input  t_vdata_32 match_data_1,
+                                     output bit matched,
                                      input  t_analyzer_trigger_cfg_byte trigger_cfg_byte
     ) {
-    timing to rising clock clk  din;
-    timing from rising clock clk  match_conds;
+    timing to rising clock clk  match_data_0, match_data_1;
+    timing from rising clock clk  matched;
     timing to rising clock clk  trigger_cfg_byte;
 }
+
+extern
+module analyzer_trigger_control( clock clk,
+                                 input bit reset_n,
+
+                                 input  t_analyzer_trigger_cfg trigger_cfg,
+                                 input bit halt_trigger,
+                                 output t_analyzer_trigger_ctl trigger_ctl
+ )
+{
+    timing to rising clock clk  trigger_cfg, halt_trigger;
+    timing from rising clock clk  trigger_ctl;
+}
+
+extern
+module analyzer_trigger_timer( clock clk,
+                               input bit reset_n,
+
+                               input  t_analyzer_trigger_cfg trigger_cfg,
+                               input  t_analyzer_trigger_ctl trigger_ctl,
+                               input t_timer_value timer_value,
+                               input bit record_time,
+                               output t_analyzer_trigger_timer trigger_timer
+    )
+{
+    timing to rising clock clk  trigger_cfg, trigger_ctl, timer_value, record_time;
+    timing from rising clock clk  trigger_timer;
+}
+
+extern module analyzer_trace_data_value_bound( clock clk,
+                                               input bit reset_n,
+                                               input  t_vdata_32  p0_data,
+
+                                               input  t_analyzer_trace_cfg_value trace_cfg,
+                                               output t_vdata_32 p2_data_value
+ )
+ {
+    timing to rising clock clk  trace_cfg, p0_data;
+    timing from rising clock clk  p2_data_value;
+}
+
+extern module analyzer_trace_data_offset_bound( clock clk,
+                                         input bit reset_n,
+                                         input  t_analyzer_data4 p0_data,
+
+                                         input  t_analyzer_trace_cfg_ofs trace_cfg,
+
+                                         output t_vdata_32 p2_data
+ )
+ {
+    timing to rising clock clk  trace_cfg, p0_data;
+    timing from rising clock clk  p2_data;
+}
+
