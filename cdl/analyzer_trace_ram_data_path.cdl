@@ -6,6 +6,10 @@ include "utils::fifo_status.h"
 include "clocking::clock_timer.h"
 include "std::srams.h"
 
+/*a Constants
+ */
+constant integer disable_alu_ops = 0 "Set this to 1 to disable ALU operation suppprt";
+
 /*a Types */
 /*t t_data_combs
  */
@@ -265,87 +269,93 @@ module analyzer_trace_ram_data_path( clock clk,
      */
     alu_operation: {
         /*b Write byte result - for 8/16/32 bit data */
-            alu_combs.write_byte_result = 0;
-            if (alu_state.alu_op == alu_op_write8) {
-                alu_combs.write_byte_result = alu_state.mem_data;
-                full_switch (alu_state.byte_of_sram) {
-                case 0: {
-                    alu_combs.write_byte_result[8;0] = alu_state.op_data[8;0];
-                }
-                case 1: {
-                    alu_combs.write_byte_result[8;8] = alu_state.op_data[8;0];
-                }
-                case 2: {
-                    alu_combs.write_byte_result[8;16] = alu_state.op_data[8;0];
-                }
-                case 3: {
-                    alu_combs.write_byte_result[8;24] = alu_state.op_data[8;0];
-                }
-                }
-            } elsif (alu_state.alu_op == alu_op_write16) {
-                alu_combs.write_byte_result = alu_state.mem_data;
-                if (alu_state.byte_of_sram[1]) {
-                    alu_combs.write_byte_result[16;16] = alu_state.op_data[16;0];
-                } else {
-                    alu_combs.write_byte_result[16;0] = alu_state.op_data[16;0];
-                }
-            } elsif (alu_state.alu_op == alu_op_write32) {
-                alu_combs.write_byte_result = alu_state.op_data;
+        alu_combs.write_byte_result = 0;
+        if (alu_state.alu_op == alu_op_write8) {
+            alu_combs.write_byte_result = alu_state.mem_data;
+            full_switch (alu_state.byte_of_sram) {
+            case 0: {
+                alu_combs.write_byte_result[8;0] = alu_state.op_data[8;0];
             }
+            case 1: {
+                alu_combs.write_byte_result[8;8] = alu_state.op_data[8;0];
+            }
+            case 2: {
+                alu_combs.write_byte_result[8;16] = alu_state.op_data[8;0];
+            }
+            case 3: {
+                alu_combs.write_byte_result[8;24] = alu_state.op_data[8;0];
+            }
+            }
+        } elsif (alu_state.alu_op == alu_op_write16) {
+            alu_combs.write_byte_result = alu_state.mem_data;
+            if (alu_state.byte_of_sram[1]) {
+                alu_combs.write_byte_result[16;16] = alu_state.op_data[16;0];
+            } else {
+                alu_combs.write_byte_result[16;0] = alu_state.op_data[16;0];
+            }
+        } elsif (alu_state.alu_op == alu_op_write32) {
+            alu_combs.write_byte_result = alu_state.op_data;
+        }
 
-        /*b Increment result */
+        /*b Do ALU operations result */
         alu_combs.alu_result = 0;
-            alu_combs.alu_add16 = bundle(1b0, alu_state.mem_data[16;0]) + bundle(1b0, alu_state.op_data[16;0]);
-            alu_combs.alu_add32 = bundle(1b0, alu_state.mem_data[32;0]) + bundle(1b0, alu_state.op_data[32;0]);
-            alu_combs.alu_cmp32 = bundle(1b0, alu_state.mem_data[32;0]) - bundle(1b0, alu_state.op_data[32;0]);
-            alu_combs.alu_cmp16_l = bundle(1b0, alu_state.mem_data[16;0]) - bundle(1b0, alu_state.op_data[16;0]);
-            alu_combs.alu_cmp16_h = bundle(1b0, alu_state.mem_data[16;16]) - bundle(1b0, alu_state.op_data[16;0]);
-            full_switch (alu_state.alu_op) {
-            case alu_op_inc32: {
-                if (alu_state.mem_data != -1) {
-                    alu_combs.alu_result = alu_state.mem_data+1;
-                }
+        alu_combs.alu_add16 = bundle(1b0, alu_state.mem_data[16;0]) + bundle(1b0, alu_state.op_data[16;0]);
+        alu_combs.alu_add32 = bundle(1b0, alu_state.mem_data[32;0]) + bundle(1b0, alu_state.op_data[32;0]);
+        alu_combs.alu_cmp32 = bundle(1b0, alu_state.mem_data[32;0]) - bundle(1b0, alu_state.op_data[32;0]);
+        alu_combs.alu_cmp16_l = bundle(1b0, alu_state.mem_data[16;0]) - bundle(1b0, alu_state.op_data[16;0]);
+        alu_combs.alu_cmp16_h = bundle(1b0, alu_state.mem_data[16;16]) - bundle(1b0, alu_state.op_data[16;0]);
+        full_switch (alu_state.alu_op) {
+        case alu_op_inc32: {
+            if (alu_state.mem_data != -1) {
+                alu_combs.alu_result = alu_state.mem_data+1;
             }
-            case alu_op_sum32: {
-                alu_combs.alu_result = alu_combs.alu_add32[32;0];
-                if (alu_combs.alu_add32[32]) {
-                    alu_combs.alu_result = -1;
-                }
+        }
+        case alu_op_sum32: {
+            alu_combs.alu_result = alu_combs.alu_add32[32;0];
+            if (alu_combs.alu_add32[32]) {
+                alu_combs.alu_result = -1;
             }
-            case alu_op_min32: {
-                alu_combs.alu_result = alu_state.mem_data;
-                if (!alu_combs.alu_cmp32[32]) { // op < mem
-                    alu_combs.alu_result = alu_state.op_data;
-                }
+        }
+        case alu_op_min32: {
+            alu_combs.alu_result = alu_state.mem_data;
+            if (!alu_combs.alu_cmp32[32]) { // op < mem
+                alu_combs.alu_result = alu_state.op_data;
             }
-            case alu_op_max32: {
-                alu_combs.alu_result = alu_state.mem_data;
-                if (alu_combs.alu_cmp32[32]) { // op >= mem
-                    alu_combs.alu_result = alu_state.op_data;
-                }
+        }
+        case alu_op_max32: {
+            alu_combs.alu_result = alu_state.mem_data;
+            if (alu_combs.alu_cmp32[32]) { // op >= mem
+                alu_combs.alu_result = alu_state.op_data;
             }
-            case alu_op_min_max16: {
-                alu_combs.alu_result = alu_state.mem_data;
-                if (!alu_combs.alu_cmp16_l[16]) { // op < mem
-                    alu_combs.alu_result[16;0] = alu_state.op_data[16;0];
-                }
-                if (alu_combs.alu_cmp16_h[16]) { // op >= mem
-                    alu_combs.alu_result[16;16] = alu_state.op_data[16;0];
-                }
+        }
+        case alu_op_min_max16: {
+            alu_combs.alu_result = alu_state.mem_data;
+            if (!alu_combs.alu_cmp16_l[16]) { // op < mem
+                alu_combs.alu_result[16;0] = alu_state.op_data[16;0];
             }
-            case alu_op_inc16_add16: {
-                if (alu_state.mem_data[16;16] != -1) {
-                    alu_combs.alu_result[16;16] = alu_state.mem_data[16;16]+1;
-                }
-                alu_combs.alu_result[16;0] = alu_combs.alu_add16[16;0];
-                if (alu_combs.alu_add16[16]) {
-                    alu_combs.alu_result[16;0] = -1;
-                }
+            if (alu_combs.alu_cmp16_h[16]) { // op >= mem
+                alu_combs.alu_result[16;16] = alu_state.op_data[16;0];
             }
-            default: { // includes clear
-                alu_combs.alu_result = 0;
+        }
+        case alu_op_inc16_add16: {
+            if (alu_state.mem_data[16;16] != -1) {
+                alu_combs.alu_result[16;16] = alu_state.mem_data[16;16]+1;
             }
+            alu_combs.alu_result[16;0] = alu_combs.alu_add16[16;0];
+            if (alu_combs.alu_add16[16]) {
+                alu_combs.alu_result[16;0] = -1;
             }
+        }
+        default: { // includes clear
+            alu_combs.alu_result = 0;
+        }
+        }
+
+        /*b Cancel alu operations if not configured
+         */
+        if (disable_alu_ops) {
+            alu_combs.alu_result = 0;
+        }
 
         /*b Store state */
         alu_combs.result = alu_combs.write_byte_result | alu_combs.alu_result;
