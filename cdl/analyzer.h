@@ -34,6 +34,35 @@ typedef struct {
     bit[32] mux_control "Shifted in from valid/data - cleared when a node becomes selected";
 } t_analyzer_ctl;
 
+/*a Types for control master */
+/*t t_actl_op
+ * APB control op
+ */
+typedef enum [3] {
+    actl_op_none,
+    actl_op_clear_enable,
+    actl_op_select,
+    actl_op_select_all,
+    actl_op_select_none,
+    actl_op_write_data,
+} t_actl_op;
+
+/*t t_analyzer_mst_ctl
+ * Analyzer control operation
+ */
+typedef struct {
+    t_actl_op actl_op;
+    bit[64] data;
+} t_analyzer_mst_ctl;
+
+/*t t_analyzer_mst_ctl_resp
+ * Analyzer control response
+ */
+typedef struct {
+    bit[16] count;
+    bit completed;
+} t_analyzer_mst_ctl_resp;
+
 /*a Types for the trace */
 /*t t_analyzer_filter_cfg
  */

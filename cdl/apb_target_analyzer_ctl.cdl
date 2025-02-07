@@ -2,6 +2,7 @@
  */
 include "apb::apb.h"
 include "analyzer.h"
+include "analyzer_modules.h"
 include "std::srams.h"
 
 /*a Types */
@@ -26,48 +27,10 @@ typedef enum [3] {
     access_select_at       "Select *one* endpoint",
 } t_access;
 
-/*t t_actl_op
- * APB control op
- */
-typedef enum [3] {
-    actl_op_none,
-    actl_op_clear_enable,
-    actl_op_select,
-    actl_op_select_all,
-    actl_op_select_none,
-    actl_op_write_data,
-} t_actl_op;
-
-/*t t_apb_combs */
-typedef struct {
-    t_actl_op actl_op;
-    bit[32] data;
-} t_apb_combs;
-
-/*t t_actl_fsm_state
- */
-typedef fsm {
-    actl_fsm_idle;
-    actl_fsm_select_at;
-    actl_fsm_select_run_all;
-    actl_fsm_select_run_clear;
-    actl_fsm_write_data;
-    actl_fsm_completed;
-} t_actl_fsm_state;
-
 /*t t_apb_state */
 typedef struct {
     t_access access;
 } t_apb_state;
-
-/*t t_actl_state */
-typedef struct {
-    t_actl_fsm_state fsm_state;
-    t_analyzer_mst mst;
-    t_analyzer_tgt tgt;
-    bit[32] count;
-    bit completed;
-} t_actl_state;
 
 /*a Module
  */
@@ -82,6 +45,51 @@ module apb_target_analyzer_ctl( clock clk,
 
     )
 """
+This module drives the analyzer_mst bus as the root of the control bus.
+
+Apb writes to select, select_at and write_data are supported;
+an APB read of the config/status is supported.
+
+The read status presents the 'count' on the bottom 24 bits, and the
+'completed' indication is provided in bit 31
+
+A select transaction with data of 'count' drives enable down the
+analyzer control chain and waits for it to return high; it sets
+'select' high (and keeps it there) after 'count' cycles; this is used
+to select a particular target on the chain.
+
+A select write with data 0 selects *no* targets; it clears select and
+then drives enable high, and waits (counting) until enable_return is
+high. The count, at this point, indicates the length of the chain. A
+select write with data 1 does the same by keeping the select signal
+high for this duration.
+
+[ Why would one do a select with data of 1? ]
+
+A select write with top data bit set forces enable to be clear, and it
+waits until enable_return is clear, counting.
+
+Once a select has completed, data can be written to the selected
+target by a 'write data' command; this shifts data in from the bottom,
+reversing the nybbles; nybbles are shifted out as they are written,
+and data stops being written when it is zero - so the last nybble that
+is to be written (the bottom nybble of data at the target) must be
+non-zero. Note that if a target is configured with a trace width of
+less than four 32-bit values then it will include a multiplexer
+selected by the last nybble written.
+
+Usage
+
+Perform a select write with data 0, to count the length of the
+analyzer control chain; when the status read has top bit set the count
+will be correct. This clears the drivers as well as counting.
+
+Clear the enable with a select write with data with the top bit set;
+wait for that to complete.
+
+Select a specific target by first clearing the enable, then performing
+a 'select_at'.
+
 """
 
 {
@@ -93,8 +101,10 @@ module apb_target_analyzer_ctl( clock clk,
     /*b Outputs for the async trace read interface
      */
     clocked t_apb_state apb_state = {*=0};
-    comb t_apb_combs apb_combs;
-    clocked t_actl_state actl_state = {*=0};
+    comb t_analyzer_mst_ctl mst_ctl;
+
+    net t_analyzer_mst_ctl_resp  mst_ctl_resp;
+    net t_analyzer_mst  analyzer_mst;
 
     /*b APB interface
      */
@@ -104,8 +114,8 @@ module apb_target_analyzer_ctl( clock clk,
         apb_response = {*=0, pready=1};
         part_switch (apb_state.access) {
         case access_read_status: {
-            apb_response.prdata[24;0] = actl_state.count[24;0];
-            apb_response.prdata[31] = actl_state.completed;
+            apb_response.prdata[16;0] = mst_ctl_resp.count[16;0];
+            apb_response.prdata[31] = mst_ctl_resp.completed;
         }
         }
 
@@ -131,122 +141,40 @@ module apb_target_analyzer_ctl( clock clk,
 
         /*b Decode the actl_op
          */
-        apb_combs.actl_op = actl_op_none;
-        apb_combs.data = apb_request.pwdata;
+        mst_ctl = {*=0};
+        mst_ctl.actl_op = actl_op_none;
+        mst_ctl.data[32;0] = apb_request.pwdata;
         full_switch (apb_state.access) {
         case access_select_at: {
-            apb_combs.actl_op = actl_op_select;
+            mst_ctl.actl_op = actl_op_select;
         }
         case access_select: {
-            apb_combs.actl_op = actl_op_select_all;
+            mst_ctl.actl_op = actl_op_select_all;
             if (apb_request.pwdata == 0) {
-                apb_combs.actl_op = actl_op_select_none;
+                mst_ctl.actl_op = actl_op_select_none;
             } elsif (apb_request.pwdata[31]) {
-                apb_combs.actl_op = actl_op_clear_enable;
+                mst_ctl.actl_op = actl_op_clear_enable;
             }
         }
         case access_write_data: {
-            apb_combs.actl_op = actl_op_write_data;
+            mst_ctl.actl_op = actl_op_write_data;
         }
         default: {
-            apb_combs.actl_op = actl_op_none;
+            mst_ctl.actl_op = actl_op_none;
         }
         }
     }
 
-    /*b Analyzer control FSM
+    /*b Analyzer control master
      */
     analyzer_control_fsm "Analyzer control FSM logic": {
-        full_switch (actl_state.fsm_state) {
-        case actl_fsm_idle: {
-            full_switch (apb_combs.actl_op) {
-            case actl_op_select: {
-                actl_state.fsm_state <= actl_fsm_select_at;
-                actl_state.completed <= 0;
-                actl_state.mst.select <= 0;
-                actl_state.mst.enable <= 0;
-                actl_state.count <= apb_combs.data;
-                actl_state.tgt <= analyzer_tgt;
-            }
-            case actl_op_clear_enable: {
-                actl_state.fsm_state <= actl_fsm_select_run_clear;
-                actl_state.count <= 0;
-                actl_state.completed <= 0;
-                actl_state.mst.select <= 0;
-                actl_state.mst.enable <= 0;
-                actl_state.tgt <= analyzer_tgt;
-            }
-            case actl_op_select_all: {
-                actl_state.fsm_state <= actl_fsm_select_run_all;
-                actl_state.count <= 0;
-                actl_state.completed <= 0;
-                actl_state.mst.select <= 1;
-                actl_state.mst.enable <= 0;
-                actl_state.tgt <= analyzer_tgt;
-            }
-            case actl_op_select_none: {
-                actl_state.fsm_state <= actl_fsm_select_run_all;
-                actl_state.count <= 0;
-                actl_state.completed <= 0;
-                actl_state.mst.select <= 0;
-                actl_state.mst.enable <= 0;
-                actl_state.tgt <= analyzer_tgt;
-            }
-            case actl_op_write_data: {
-                actl_state.fsm_state <= actl_fsm_write_data;
-                actl_state.completed <= 0;
-                actl_state.mst.valid <= 1;
-                actl_state.mst.data <= apb_combs.data[4;0];
-                actl_state.count <= bundle(4b0, apb_combs.data[28;4]);
-                actl_state.tgt <= analyzer_tgt;
-            }
-        }
-        }
-        case actl_fsm_select_at: {
-            actl_state.tgt <= analyzer_tgt;
-            actl_state.mst.enable <= 1;
-            actl_state.mst.select <= 0;
-            if (actl_state.count == 0) {
-                actl_state.mst.select <= 1;
-            }
-            if (actl_state.tgt.enable_return) {
-                actl_state.fsm_state <= actl_fsm_completed;
-            }
-            actl_state.count <= actl_state.count - 1;
-        }
-        case actl_fsm_select_run_all: {
-            actl_state.tgt <= analyzer_tgt;
-            actl_state.mst.enable <= 1;
-            if (actl_state.tgt.enable_return) {
-                actl_state.fsm_state <= actl_fsm_completed;
-            }
-            actl_state.count <= actl_state.count + 1;
-        }
-        case actl_fsm_select_run_clear: {
-            actl_state.tgt <= analyzer_tgt;
-            actl_state.mst.enable <= 0;
-            if (!actl_state.tgt.enable_return) {
-                actl_state.fsm_state <= actl_fsm_completed;
-            }
-            actl_state.count <= actl_state.count + 1;
-        }
-        case actl_fsm_write_data: {
-            actl_state.tgt <= analyzer_tgt;
-            actl_state.mst.valid <= 1;
-            actl_state.mst.data <= actl_state.count[4;0];
-            if (actl_state.count == 0) {
-                actl_state.fsm_state <= actl_fsm_completed;
-                actl_state.mst.valid <= 0;
-            }
-            actl_state.count <= bundle(4b0, actl_state.count[28;4]);
-        }
-        case actl_fsm_completed: {
-            actl_state.fsm_state <= actl_fsm_idle;
-            actl_state.completed <= 1;
-        }
-        }            
-
-        analyzer_mst = actl_state.mst;
+        analyzer_control_master ctl_master(
+            clk <- clk,
+            reset_n <= reset_n,
+            mst_ctl <= mst_ctl,
+            mst_ctl_resp => mst_ctl_resp,
+            analyzer_mst => analyzer_mst,
+            analyzer_tgt <= analyzer_tgt );
     }
 
     /*b Done

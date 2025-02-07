@@ -1,0 +1,86 @@
+include "apb::apb.h"
+include "analyzer.h"
+include "analyzer_modules.h"
+module tb_analyzer( clock clk,
+                        input bit reset_n,
+                        
+                        input  t_apb_request  apb_request  "APB request",
+                        output t_apb_response apb_response "APB response",
+                        output t_analyzer_data4 analyzer_data4
+    )
+{
+    net t_apb_response apb_response;
+
+    net t_analyzer_mst analyzer_mst;
+    net t_analyzer_tgt analyzer_tgt;
+
+    net t_analyzer_ctl ctl;
+
+    default clock clk;
+    default reset active_low reset_n;
+    clocked t_analyzer_data4 analyzer_data = {*=0};
+    modules: {
+        analyzer_data4 = analyzer_tgt.data;
+        apb_target_analyzer_ctl ctl( clk <- clk,
+                                     reset_n <= reset_n,
+                                     apb_request <= apb_request_ctl,
+                                     apb_response => apb_response_ctl,
+                                     analyzer_mst => analyzer_mst,
+                                     analyzer_tgt <= analyzer_tgt
+            );
+
+        analyzer_data.valid <= 1;
+        analyzer_data.data_0 <= analyzer_data.data_0 + 0x1234567;
+        analyzer_data.data_1 <= bundle(analyzer_data.data_1[31;0], analyzer_data.data_0[16]);
+        if (analyzer_data.data_1[3;0] == 0x111) {
+            analyzer_data.data_2 <= analyzer_data.data_2 + analyzer_data.data_0;
+        }
+        analyzer_data.data_3 <= bundle(analyzer_data.data_3[31;0], 1b0);
+        analyzer_data.data_3[0] <= analyzer_data.data_3[31] ^ analyzer_data.data_3[30] ^ 1b1;
+
+        analyzer_target tgt( clk <- clk, reset_n <= reset_n,
+                             analyzer_mst <= analyzer_mst,
+                             analyzer_tgt => analyzer_tgt,
+                              
+                             analyzer_ctl => ctl,
+                             analyzer_data <= analyzer_data
+            );
+
+        net  t_analyzer_data4 data_filtered;
+        net  t_analyzer_data4 data_triggered;
+        net  t_analyzer_filter_cfg filter_cfg;
+        net  t_analyzer_trigger_cfg trigger_cfg;
+        net  t_analyzer_trace_cfg trace_cfg;
+
+        net  t_analyzer_trace_op4 trace_op;
+
+        net t_timer_value timer_value;
+
+        net t_fifo_status[2] trace_fifo_status;
+
+
+        net t_analyzer_trace_req trace_req;
+        net t_analyzer_trace_resp trace_resp;
+        analyzer_trace_filter filter( clk <- clk, reset_n <= reset_n,
+                                      din <= analyzer_tgt.data,
+                                      dout => data_filtered
+                                      filter_cfg <= filter_cfg );
+
+        analyzer_trigger_simple trigger(  clk <- clk, reset_n <= reset_n,
+                                          din <= data_filtered,
+                                          dout => data_triggered,
+                                          trace_op => trace_op,
+                                          timer_value <= timer_value,
+                                          trigger_cfg_in <= trigger_cfg );
+        analyzer_trace_ram trace(  clk <- clk, reset_n <= reset_n,
+                                   trace_op <= trace_op,
+                                   din <= data_triggered,
+                                   fifo_status_l => fifo_status[0],
+                                   fifo_status_h => fifo_status[1],
+
+                                   trace_req <= trace_req,
+                                   trace_resp => trace_resp,
+
+                                   trace_cfg <= trace_cfg );
+    }
+}

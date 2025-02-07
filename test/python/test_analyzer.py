@@ -65,6 +65,7 @@ class AnalyzerCtlTest_Base(ThExecFile):
         pass
     #f run
     def run(self) -> None:
+        self.verbose.message(f"Test {self.__class__.__name__}")
         self.verbose.set_level(self.verbose.level_info)
 
         self.bfm_wait(4)
@@ -77,6 +78,8 @@ class AnalyzerCtlTest_Base(ThExecFile):
         self.compare_expected("Status",0,x)
 
         # Count length of analyzer target chain
+        #
+        # The chain here is 28 taps long
         self.verbose.info("Write 0 to select none, wait, expect it to complete with count of 28 (cycles from enable in rising to enable out rising)")
         self.analyzer_select.write(0)
         self.bfm_wait(100)
@@ -85,6 +88,10 @@ class AnalyzerCtlTest_Base(ThExecFile):
         self.compare_expected("Status low",0x1c,x&0x7fffffff)
 
         # Clear the enable
+        #
+        # before enable should be high, select low; waits until enable_return is low
+        #
+        # enable_return drops much faster than the length of the chain
         self.verbose.info("Write 1<<31 to run clear, wait")
         self.analyzer_select.write(0x80000000)
         self.bfm_wait(100)
@@ -108,9 +115,9 @@ class AnalyzerCtlTest_Base(ThExecFile):
 
         self.verbose.info("Selected; write the data out")
 
-        # Write 0x94 to tgt 4 (nybbles are reversed)
-        self.analyzer_write_data.write(0x49)
-        self.bfm_wait(20)
+        # Write 0x94 to tgt 4
+        self.analyzer_write_data.write(0x94)
+        self.bfm_wait(30)
 
         x = self.analyzer_data4__data_0.value()
         self.compare_expected("Target should be driving 4 (its target number) to data0",0x4, x)

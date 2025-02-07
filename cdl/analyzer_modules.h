@@ -101,6 +101,25 @@ module analyzer_target( clock clk,
 
 
 /*m apb_target_analyzer */
+extern module analyzer_control_master( clock clk,
+                                input bit reset_n,
+
+                                input t_analyzer_mst_ctl mst_ctl,
+                                output t_analyzer_mst_ctl_resp mst_ctl_resp,
+
+                                output  t_analyzer_mst  analyzer_mst,
+                                input t_analyzer_tgt  analyzer_tgt "Data not used"
+
+    )
+{
+    timing to   rising clock clk mst_ctl;
+    timing from rising clock clk mst_ctl_resp;
+
+    timing to   rising clock clk analyzer_tgt;
+    timing from rising clock clk analyzer_mst;
+}
+
+/*m apb_target_analyzer */
 extern module apb_target_analyzer( clock analyzer_clock,
                             clock async_trace_read_clock,
                             clock apb_clock,
