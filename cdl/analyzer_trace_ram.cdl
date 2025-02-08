@@ -192,10 +192,12 @@ c. 32-bit values
     comb t_vdata_32 p0_data_0;
     comb t_vdata_32 p0_data_1;
 
-    net t_vdata_32[2] p2_data_value;
+    net t_vdata_32 p2_data_value_0;
+    net t_vdata_32 p2_data_value_1;
     net t_vdata_32 p2_data_ofs;
     
     comb t_access_combs[2] access_combs;
+    net t_access_resp[2] access_resp;
     
     net t_fifo_status fifo_status_l;
     net t_fifo_status fifo_status_h;
@@ -212,16 +214,16 @@ c. 32-bit values
 
         analyzer_trace_data_value_bound bnd0( clk <- clk,
                                               reset_n <= reset_n,
-                                              p0_data <= p0_data_0,
+                                              din <= p0_data_0,
                                               trace_cfg <= trace_cfg.value_0,
-                                              p2_data_value => p2_data_value[0]
+                                              p2_data_value => p2_data_value_0
             );
 
         analyzer_trace_data_value_bound bnd1( clk <- clk,
                                               reset_n <= reset_n,
-                                              p0_data <= p0_data_1,
+                                              din <= p0_data_1,
                                               trace_cfg <= trace_cfg.value_1,
-                                              p2_data_value => p2_data_value[1]
+                                              p2_data_value => p2_data_value_1
             );
 
     }
@@ -245,13 +247,15 @@ c. 32-bit values
         }
         analyzer_trace_ram_data_path dp_0( clk<-clk,
                                            reset_n <= reset_n,
-                                           access_combs <= access_combs[0],
+                                           access_req <= access_combs[0],
+                                           access_resp => access_resp[0],
                                            fifo_status => fifo_status_l,
                                            trace_cfg_fifo <= trace_cfg.fifo_0
             );
         analyzer_trace_ram_data_path dp_1( clk<-clk,
                                            reset_n <= reset_n,
-                                           access_combs <= access_combs[1],
+                                           access_req <= access_combs[1],
+                                           access_resp => access_resp[1],
                                            fifo_status => fifo_status_h,
                                            trace_cfg_fifo <= trace_cfg.fifo_1
             );

@@ -39,8 +39,8 @@ class ApbAddressMap(csr.Map):
          ]
     pass
 
-#c AnalyzerCtlTest_Base
-class AnalyzerCtlTest_Base(ThExecFile):
+#c ApbAnalyzerTest_Base
+class ApbAnalyzerTest_Base(ThExecFile):
     th_name = "Utils dprintf test harness"
     sram_inter_delay = 0
     # This can be set at initialization time to reduce the number of explicit test cases
@@ -146,17 +146,17 @@ class AnalyzerCtlTest_Base(ThExecFile):
         pass
     pass
 
-#c AnalyzerCtlTest_0
-class AnalyzerCtlTest_0(AnalyzerCtlTest_Base):
+#c ApbAnalyzerTest_0
+class ApbAnalyzerTest_0(ApbAnalyzerTest_Base):
     pass
 
 #a Hardware and test instantiation
-#c AnalyzerCtlHardware
-class AnalyzerCtlHardware(HardwareThDut):
+#c ApbAnalyzerHardware
+class ApbAnalyzerHardware(HardwareThDut):
     clock_desc = [("clk",(0,2,2)),
     ]
     reset_desc = {"name":"reset_n", "init_value":0, "wait":5}
-    module_name = "tb_analyzer_ctl"
+    module_name = "tb_analyzer"
     dut_inputs  = {"apb_request":t_apb_request,
     }
     dut_outputs = {"apb_response":t_apb_response,
@@ -166,9 +166,9 @@ class AnalyzerCtlHardware(HardwareThDut):
                 }
     pass
 
-#c TestAnalyzerCtl
-class TestAnalyzerCtl(TestCase):
-    hw = AnalyzerCtlHardware
-    _tests = {"0": (AnalyzerCtlTest_0, 2*1000, {}),
+#c TestApbAnalyzer
+class TestApbAnalyzer(TestCase):
+    hw = ApbAnalyzerHardware
+    _tests = {"0": (ApbAnalyzerTest_0, 2*1000, {}),
     }
 

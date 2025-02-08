@@ -173,7 +173,7 @@ extern module apb_target_analyzer_ctl( clock clk,
 }
 
 
-/*m analyzer_trigger_simple_byte
+/*m analyzer_trigger_simple
  */
 extern
 module analyzer_trigger_simple( clock clk,
@@ -206,6 +206,8 @@ module analyzer_trigger_simple_byte( clock clk,
     timing to rising clock clk  match_data_0, match_data_1;
     timing from rising clock clk  matched;
     timing to rising clock clk  trigger_cfg_byte;
+    timing comb input trigger_cfg_byte;
+    timing comb output matched;
 }
 
 /*m analyzer_trigger_control
@@ -244,13 +246,13 @@ module analyzer_trigger_timer( clock clk,
  */
 extern module analyzer_trace_data_value_bound( clock clk,
                                                input bit reset_n,
-                                               input  t_vdata_32  p0_data,
+                                               input  t_vdata_32  din,
 
                                                input  t_analyzer_trace_cfg_value trace_cfg,
                                                output t_vdata_32 p2_data_value
  )
  {
-    timing to rising clock clk  trace_cfg, p0_data;
+    timing to rising clock clk  trace_cfg, din;
     timing from rising clock clk  p2_data_value;
 }
 

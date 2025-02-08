@@ -12,7 +12,7 @@ module analyzer_trace_data_value_bound( clock clk,
 
                                         input  t_analyzer_trace_cfg_value trace_cfg,
 
-                                        output t_vdata_32 p2_data
+                                        output t_vdata_32 p2_data_value
  )
 """
 This initial data (for each 32-bits) is adjusted using:
@@ -43,7 +43,7 @@ By max-min - if using max_min and ((D[i] - cfg.value_base[i]) >> cfg.value_shf[i
     comb bit[32] p12_data_result;
     comb bit[32] p12_data_unused;
 
-    clocked t_vdata_32 p2_data  = {*=0} ;
+    clocked t_vdata_32 p2_data_value  = {*=0} ;
     
     /*b Data value logic
      */
@@ -74,9 +74,9 @@ By max-min - if using max_min and ((D[i] - cfg.value_base[i]) >> cfg.value_shf[i
             }
         }
 
-        if (p1_data_valid || p2_data.valid) {
-            p2_data.valid <= p1_data_valid;
-            p2_data.data <= p12_data_result;
+        if (p1_data_valid || p2_data_value.valid) {
+            p2_data_value.valid <= p1_data_valid;
+            p2_data_value.data <= p12_data_result;
         }
 
     }

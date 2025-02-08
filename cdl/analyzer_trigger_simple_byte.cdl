@@ -30,7 +30,8 @@ typedef struct
 module analyzer_trigger_simple_byte( clock clk,
                                      input bit reset_n,
 
-                                     input  t_vdata_32 match_data,
+                                     input  t_vdata_32 match_data_0,
+                                     input  t_vdata_32 match_data_1,
                                      output bit matched,
                                      input  t_analyzer_trigger_cfg_byte trigger_cfg_byte
  )
@@ -74,16 +75,28 @@ This has a pipeline delay of two:
     timer_value_logic "Timer value logic": {
         full_switch (trigger_cfg_byte.byte_sel) {
         case 0: {
-            match_combs.data_byte = match_data.data[8;0];
+            match_combs.data_byte = match_data_0.data[8;0];
         }
         case 1: {
-            match_combs.data_byte = match_data.data[8;8];
+            match_combs.data_byte = match_data_0.data[8;8];
         }
         case 2: {
-            match_combs.data_byte = match_data.data[8;16];
+            match_combs.data_byte = match_data_0.data[8;16];
+        }
+        case 3: {
+            match_combs.data_byte = match_data_0.data[8;24];
+        }
+        case 4: {
+            match_combs.data_byte = match_data_1.data[8;0];
+        }
+        case 5: {
+            match_combs.data_byte = match_data_1.data[8;8];
+        }
+        case 6: {
+            match_combs.data_byte = match_data_1.data[8;16];
         }
         default: {
-            match_combs.data_byte = match_data.data[8;24];
+            match_combs.data_byte = match_data_1.data[8;24];
         }
         }
 
@@ -96,7 +109,7 @@ This has a pipeline delay of two:
         }
 
         match_state.valid <= 0;
-        if (match_data.valid || trigger_cfg_byte.ignore_valid) {
+        if (match_data_0.valid || match_data_1.valid || trigger_cfg_byte.ignore_valid) {
             match_state.data_match <= match_combs.next_matched;
             match_state.last_data_match <= match_state.data_match;
             match_state.valid <= 1;
