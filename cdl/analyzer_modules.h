@@ -1,5 +1,6 @@
 /*a Includes */
 include "std::valid_data.h"
+include "utils::fifo_status.h"
 include "apb::apb.h"
 include "clocking::clock_timer.h"
 include "analyzer.h"
@@ -100,7 +101,7 @@ module analyzer_target( clock clk,
 }
 
 
-/*m apb_target_analyzer */
+/*m analyzer_control_master */
 extern module analyzer_control_master( clock clk,
                                 input bit reset_n,
 
@@ -175,6 +176,25 @@ extern module apb_target_analyzer_ctl( clock clk,
 /*m analyzer_trigger_simple_byte
  */
 extern
+module analyzer_trigger_simple( clock clk,
+                           input bit reset_n,
+
+                           input  t_analyzer_data4  din,
+                           output  t_analyzer_data4 dout,
+
+                           output  t_analyzer_trace_op4 trace_op,
+                           input t_timer_value timer_value,
+
+                           input  t_analyzer_trigger_cfg trigger_cfg_in
+    ) {
+    timing to rising clock clk  din, timer_value;
+    timing from rising clock clk  dout, trace_op;
+    timing to rising clock clk  trigger_cfg_in;
+}
+
+/*m analyzer_trigger_simple_byte
+ */
+extern
 module analyzer_trigger_simple_byte( clock clk,
                                      input bit reset_n,
 
@@ -188,6 +208,8 @@ module analyzer_trigger_simple_byte( clock clk,
     timing to rising clock clk  trigger_cfg_byte;
 }
 
+/*m analyzer_trigger_control
+ */
 extern
 module analyzer_trigger_control( clock clk,
                                  input bit reset_n,
@@ -201,6 +223,8 @@ module analyzer_trigger_control( clock clk,
     timing from rising clock clk  trigger_ctl;
 }
 
+/*m analyzer_trigger_timer
+ */
 extern
 module analyzer_trigger_timer( clock clk,
                                input bit reset_n,
@@ -216,6 +240,8 @@ module analyzer_trigger_timer( clock clk,
     timing from rising clock clk  trigger_timer;
 }
 
+/*m analyzer_trace_data_value_bound
+ */
 extern module analyzer_trace_data_value_bound( clock clk,
                                                input bit reset_n,
                                                input  t_vdata_32  p0_data,
@@ -228,7 +254,10 @@ extern module analyzer_trace_data_value_bound( clock clk,
     timing from rising clock clk  p2_data_value;
 }
 
-extern module analyzer_trace_data_offset_bound( clock clk,
+/*m analyzer_trace_data_offset_bound
+ */
+extern
+module analyzer_trace_data_offset_bound( clock clk,
                                          input bit reset_n,
                                          input  t_analyzer_data4 p0_data,
 
@@ -241,3 +270,45 @@ extern module analyzer_trace_data_offset_bound( clock clk,
     timing from rising clock clk  p2_data;
 }
 
+/*m analyzer_trace_filter
+ */
+extern
+module analyzer_trace_filter( clock clk,
+                           input bit reset_n,
+
+                           input  t_analyzer_data4  din,
+                           output  t_analyzer_data4 dout,
+
+                           input  t_analyzer_filter_cfg filter_cfg
+ )
+ {
+     timing to rising clock clk  din, filter_cfg;
+     timing from rising clock clk  dout;
+}
+
+/*m analyzer_trace_data_offset_bound
+ */
+extern
+module analyzer_trace_ram( clock clk,
+                           input bit reset_n,
+
+                           input  t_analyzer_trace_op4  trace_op "Includes data to use for address calculation",
+                           input  t_analyzer_data4  din "Only bottom two words are used here",
+
+                           output t_fifo_status fifo_status_l,
+                           output t_fifo_status fifo_status_h,
+
+                           input t_analyzer_trace_req trace_req,
+                           output t_analyzer_trace_resp trace_resp,
+
+                           input  t_analyzer_trace_cfg trace_cfg
+ )
+ {
+     timing to rising clock clk  trace_op, din;
+     timing from rising clock clk  fifo_status_l, fifo_status_h;
+
+     timing to rising clock clk  trace_req;
+     timing from rising clock clk  trace_resp;
+
+     timing to rising clock clk  trace_cfg;
+}

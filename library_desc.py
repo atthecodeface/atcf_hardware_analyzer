@@ -44,7 +44,7 @@ class ApbTargetModules(cdl_desc.Modules):
     modules += [ CdlModule("apb_target_analyzer_ctl") ]
     modules += [ CdlModule("tb_analyzer_ctl",
                             src_dir=tb_src_dir) ]
-    #modules += [ CdlModule("tb_analyzer",
-    #                        src_dir=tb_src_dir) ]
+    modules += [ CdlModule("tb_analyzer",
+                            src_dir=tb_src_dir) ]
     pass
 

@@ -1,6 +1,10 @@
+include "utils::fifo_status.h"
+include "apb::apb.h"
 include "apb::apb.h"
 include "analyzer.h"
 include "analyzer_modules.h"
+include "clocking::clock_timer.h"
+include "clocking::clock_timer_modules.h"
 module tb_analyzer( clock clk,
                         input bit reset_n,
                         
@@ -9,8 +13,6 @@ module tb_analyzer( clock clk,
                         output t_analyzer_data4 analyzer_data4
     )
 {
-    net t_apb_response apb_response;
-
     net t_analyzer_mst analyzer_mst;
     net t_analyzer_tgt analyzer_tgt;
 
@@ -19,8 +21,45 @@ module tb_analyzer( clock clk,
     default clock clk;
     default reset active_low reset_n;
     clocked t_analyzer_data4 analyzer_data = {*=0};
+
+    net  t_analyzer_data4 data_filtered;
+    net  t_analyzer_data4 data_triggered;
+
+    comb  t_analyzer_filter_cfg filter_cfg;
+    comb  t_analyzer_trigger_cfg trigger_cfg;
+    comb  t_analyzer_trace_cfg trace_cfg;
+    comb  t_timer_control_full timer_ctl;
+    net t_timer_value  timer_value;
+    
+    net  t_analyzer_trace_op4 trace_op;
+
+    net t_fifo_status[2] trace_fifo_status;
+
+    comb t_analyzer_trace_req trace_req;
+    net t_analyzer_trace_resp trace_resp;
+
+    comb  t_apb_request  apb_request_ctl  "APB request to target ctl";
+    net t_apb_response apb_response_ctl "APB response from target ctl";
+
+    configuration : {
+        filter_cfg = {*=0};
+        trigger_cfg = {*=0};
+        trace_cfg = {*=0};
+        trace_req = {*=0};
+    }
+
     modules: {
+        apb_response = {*=0};
+        apb_response |= apb_response_ctl;
+        apb_request_ctl = apb_request;
+
         analyzer_data4 = analyzer_tgt.data;
+
+        timer_ctl = {*=90};
+        clock_timer clk_timer( clk<-clk, reset_n<=reset_n,
+                               timer_control <= timer_ctl,
+                               timer_value => timer_value);
+
         apb_target_analyzer_ctl ctl( clk <- clk,
                                      reset_n <= reset_n,
                                      apb_request <= apb_request_ctl,
@@ -46,24 +85,9 @@ module tb_analyzer( clock clk,
                              analyzer_data <= analyzer_data
             );
 
-        net  t_analyzer_data4 data_filtered;
-        net  t_analyzer_data4 data_triggered;
-        net  t_analyzer_filter_cfg filter_cfg;
-        net  t_analyzer_trigger_cfg trigger_cfg;
-        net  t_analyzer_trace_cfg trace_cfg;
-
-        net  t_analyzer_trace_op4 trace_op;
-
-        net t_timer_value timer_value;
-
-        net t_fifo_status[2] trace_fifo_status;
-
-
-        net t_analyzer_trace_req trace_req;
-        net t_analyzer_trace_resp trace_resp;
         analyzer_trace_filter filter( clk <- clk, reset_n <= reset_n,
                                       din <= analyzer_tgt.data,
-                                      dout => data_filtered
+                                      dout => data_filtered,
                                       filter_cfg <= filter_cfg );
 
         analyzer_trigger_simple trigger(  clk <- clk, reset_n <= reset_n,
@@ -75,8 +99,8 @@ module tb_analyzer( clock clk,
         analyzer_trace_ram trace(  clk <- clk, reset_n <= reset_n,
                                    trace_op <= trace_op,
                                    din <= data_triggered,
-                                   fifo_status_l => fifo_status[0],
-                                   fifo_status_h => fifo_status[1],
+                                   fifo_status_l => trace_fifo_status[0],
+                                   fifo_status_h => trace_fifo_status[1],
 
                                    trace_req <= trace_req,
                                    trace_resp => trace_resp,
