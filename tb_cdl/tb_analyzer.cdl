@@ -55,7 +55,7 @@ module tb_analyzer( clock clk,
 
         analyzer_data4 = analyzer_tgt.data;
 
-        timer_ctl = {*=90};
+        timer_ctl = {*=0};
         clock_timer clk_timer( clk<-clk, reset_n<=reset_n,
                                timer_control <= timer_ctl,
                                timer_value => timer_value);
