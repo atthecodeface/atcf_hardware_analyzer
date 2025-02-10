@@ -3,6 +3,7 @@ include "apb::apb.h"
 include "apb::apb.h"
 include "analyzer.h"
 include "analyzer_modules.h"
+include "tb_analyzer_modules.h"
 include "clocking::clock_timer.h"
 include "clocking::clock_timer_modules.h"
 module tb_analyzer_filter( clock clk,
@@ -17,11 +18,8 @@ module tb_analyzer_filter( clock clk,
     net t_analyzer_mst analyzer_mst;
     net t_analyzer_tgt analyzer_tgt;
 
-    net t_analyzer_ctl ctl;
-
     default clock clk;
     default reset active_low reset_n;
-    clocked t_analyzer_data4 analyzer_data = {*=0};
     net t_analyzer_data4 analyzer_data_filtered;
 
     net  t_analyzer_filter_cfg filter_cfg;
@@ -30,17 +28,22 @@ module tb_analyzer_filter( clock clk,
     
     comb  t_apb_request  apb_request_ctl  "APB request to target ctl";
     comb  t_apb_request  apb_request_cfg  "APB request to target cfg";
+    comb  t_apb_request  apb_request_src  "APB request to target src";
     net t_apb_response apb_response_ctl "APB response from target ctl";
     net t_apb_response apb_response_cfg "APB response from target cfg";
+    net t_apb_response apb_response_src "APB response from target src";
 
     modules: {
         apb_response = {*=0};
-        apb_response |= apb_response_ctl;
         apb_response |= apb_response_cfg;
-        apb_request_ctl = apb_request;
+        apb_response |= apb_response_ctl;
+        apb_response |= apb_response_src;
         apb_request_cfg = apb_request;
-        apb_request_ctl.psel = apb_request.psel && apb_request.paddr[10];
-        apb_request_cfg.psel = apb_request.psel && !apb_request.paddr[10];
+        apb_request_ctl = apb_request;
+        apb_request_src = apb_request;
+        apb_request_cfg.psel = apb_request.psel && (apb_request.paddr[2;10] == 2b00);
+        apb_request_ctl.psel = apb_request.psel && (apb_request.paddr[2;10] == 2b01);
+        apb_request_src.psel = apb_request.psel && (apb_request.paddr[2;10] == 2b10);
 
         analyzer_data4 = analyzer_tgt.data;
 
@@ -63,27 +66,17 @@ module tb_analyzer_filter( clock clk,
     }
     analyzer_target_logic : {
 
-        analyzer_data.valid <= 1;
-        analyzer_data.data_0 <= analyzer_data.data_0 + 0x1;
-        analyzer_data.data_1 <= bundle(analyzer_data.data_1[31;0], analyzer_data.data_0[4]);
-        if (analyzer_data.data_1[3;0] == 0x111) {
-            analyzer_data.data_2 <= analyzer_data.data_2 + analyzer_data.data_0;
-        }
-        analyzer_data.data_3 <= bundle(analyzer_data.data_3[31;0], 1b0);
-        analyzer_data.data_3[0] <= analyzer_data.data_3[31] ^ analyzer_data.data_3[30] ^ 1b1;
-
-        analyzer_target tgt( clk <- clk, reset_n <= reset_n,
+        tb_apb_target_analyzer_src src( clk <- clk, reset_n <= reset_n,
+                                     apb_request <= apb_request_src,
+                                     apb_response => apb_response_src,
                              analyzer_mst <= analyzer_mst,
-                             analyzer_tgt => analyzer_tgt,
-                              
-                             analyzer_ctl => ctl,
-                             analyzer_data <= analyzer_data
+                             analyzer_tgt => analyzer_tgt
             );
-analyzer_trace_filter filter(
-    clk <- clk, reset_n <= reset_n,
-    din <= analyzer_tgt.data,
-    dout => analyzer_data_filtered,
-    filter_cfg <= filter_cfg );
+        analyzer_trace_filter filter(
+            clk <- clk, reset_n <= reset_n,
+            din <= analyzer_tgt.data,
+            dout => analyzer_data_filtered,
+            filter_cfg <= filter_cfg );
     }
 
 }

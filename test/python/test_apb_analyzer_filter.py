@@ -115,12 +115,13 @@ class ApbAnalyzerHardware(HardwareThDut):
     clock_desc = [("clk",(0,2,2)),
     ]
     reset_desc = {"name":"reset_n", "init_value":0, "wait":5}
-    module_name = "tb_analyzer_filter"
+    module_name = "tb_analyzer"
     dut_inputs  = {"apb_request":t_apb_request,
     }
     dut_outputs = {"apb_response":t_apb_response,
                    "analyzer_data4":t_analyzer_data4,
                    "analyzer_data_filtered":t_analyzer_data4,
+                   "analyzer_data_triggered":t_analyzer_data4,
     }
     loggers = { # "dprintf": {"modules":"dut.dut", "verbose":1}
                 }
