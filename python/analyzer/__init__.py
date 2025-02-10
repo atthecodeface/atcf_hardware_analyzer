@@ -1,4 +1,10 @@
-from .target_analyzer_ctl import AnalyzerCtlAddressMap
+from .target_analyzer import AnalyzerCtlAddressMap,  AnalyzerCfgAddressMap, TbApbAddressMap
+from .target_analyzer_filter import Filter, FilterAcceptAll, FilterChanging
+
 from .analyzer import t_analyzer_data4, t_analyzer_filter_cfg, t_access_combs, t_analyzer_trace_cfg_fifo, t_address_op, t_alu_op, t_access_resp
 
-__all__ = [AnalyzerCtlAddressMap, t_analyzer_data4, t_analyzer_filter_cfg, t_access_combs, t_analyzer_trace_cfg_fifo, t_address_op, t_alu_op, t_access_resp]
+__all__ = []
+__all__ += [AnalyzerCtlAddressMap, AnalyzerCfgAddressMap, TbApbAddressMap]
+__all__ += [t_analyzer_data4, t_analyzer_filter_cfg, t_access_combs, t_analyzer_trace_cfg_fifo, t_address_op, t_alu_op, t_access_resp]
+__all__ += [Filter, FilterAcceptAll, FilterChanging]
+

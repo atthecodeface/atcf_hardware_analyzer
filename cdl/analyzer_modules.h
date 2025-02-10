@@ -172,6 +172,23 @@ extern module apb_target_analyzer_ctl( clock clk,
     timing to   rising clock clk analyzer_tgt;
 }
 
+/*m apb_target_analyzer_cfg */
+extern module apb_target_analyzer_cfg( clock clk,
+                                input bit reset_n,
+
+                                input  t_apb_request  apb_request  "APB request",
+                                output t_apb_response apb_response "APB response",
+
+                                output  t_analyzer_filter_cfg filter_cfg,
+                                output  t_analyzer_trigger_cfg trigger_cfg,
+                                output  t_analyzer_trace_cfg trace_cfg
+    )
+{
+    timing to   rising clock clk apb_request;
+    timing from rising clock clk apb_response;
+
+    timing from rising clock clk filter_cfg, trigger_cfg, trace_cfg;
+}
 
 /*m analyzer_trigger_simple
  */

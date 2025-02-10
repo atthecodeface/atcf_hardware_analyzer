@@ -1,19 +1,34 @@
-#a Copyright
-#  
-#  This file 'test_dprintf.py' copyright Gavin J Stark 2017-2020
-#  
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+#a Documentation
+"""
+Tests for 'analyzer_trace_ram_data_path'
+
+* Write(A), clear(A), read(A) zeros the RAM address A and reads it back
+
+* Push(1..100) followed by 100 Pop() pops 1..100, if push enabled
+
+* Clear, Push(1..100) followed by 100 Pop() pops 0 100 times if push not enabled
+
+* Push16(1..100) followed by 100 Pop16() pops 1..100, if push enabled
+
+* Push8(1..100) followed by 100 Pop8() pops 1..100, if push enabled
+
+* Clear, AtomicInc(1..100) followed by 100 Read() returns 100 1s
+
+* Clear, 50 Sum32(x/2,x) + Sum32(x/2,x+1), reads, returns 4x+1
+
+* Clear, 50 Add16Inc16(x/2,x) + Add16Inc16(x/2,x+1), reads, returns 4x+1 / 2
+
+* Clear, 50 Max32(x,k(x)), Min32(x,k(x)), reads works correctly
+
+* Clear, 50 MinMax16(x,k(x)), reads works correctly
+
+* No journal, pop(empty), push(full), pop(full): pop, push * 2100, read, pop*2, push*5, read*5
+
+* Journal, pop(empty), push(full), pop(full): pop, push * 2053, read, pop*2, push*5, read*11
+
+* Atomic data forwarding - paths with delay 0, 1, 2, 3
+
+"""
 
 #a Imports
 from queue import Queue
@@ -25,7 +40,11 @@ from cdl.sim     import HardwareThDut
 from cdl.sim     import TestCase
 from typing import Optional
 
+#a AccessOp
 class AccessOp:
+    """
+    A trace RAM access operation
+    """
     read_enable = 0
     write_enable = 0
     id = 0
@@ -90,6 +109,7 @@ class AccessOp:
         return cls(id, address_or_op=address, alu_op=t_alu_op.clear, write_enable=1, read_enable=read_enable)
     pass
 
+#a AnalyzerTraceRamDataPathTests
 #c AnalyzerTraceRamDataPathTest_Base
 class AnalyzerTraceRamDataPathTest_Base(ThExecFile):
     th_name = "Analyzer trace data ram path test"

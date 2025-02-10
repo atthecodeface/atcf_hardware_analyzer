@@ -60,6 +60,29 @@ module tb_analyzer( clock clk,
                                timer_control <= timer_ctl,
                                timer_value => timer_value);
 
+        analyzer_trace_filter filter( clk <- clk, reset_n <= reset_n,
+                                      din <= analyzer_tgt.data,
+                                      dout => data_filtered,
+                                      filter_cfg <= filter_cfg );
+
+        analyzer_trigger_simple trigger(  clk <- clk, reset_n <= reset_n,
+                                          din <= data_filtered,
+                                          dout => data_triggered,
+                                          trace_op => trace_op,
+                                          timer_value <= timer_value,
+                                          trigger_cfg_in <= trigger_cfg );
+        analyzer_trace_ram trace(  clk <- clk, reset_n <= reset_n,
+                                   trace_op <= trace_op,
+                                   din <= data_triggered,
+                                   fifo_status_l => trace_fifo_status[0],
+                                   fifo_status_h => trace_fifo_status[1],
+
+                                   trace_req <= trace_req,
+                                   trace_resp => trace_resp,
+
+                                   trace_cfg <= trace_cfg );
+    }
+    analyzer_target_logic : {
         apb_target_analyzer_ctl ctl( clk <- clk,
                                      reset_n <= reset_n,
                                      apb_request <= apb_request_ctl,
@@ -85,26 +108,5 @@ module tb_analyzer( clock clk,
                              analyzer_data <= analyzer_data
             );
 
-        analyzer_trace_filter filter( clk <- clk, reset_n <= reset_n,
-                                      din <= analyzer_tgt.data,
-                                      dout => data_filtered,
-                                      filter_cfg <= filter_cfg );
-
-        analyzer_trigger_simple trigger(  clk <- clk, reset_n <= reset_n,
-                                          din <= data_filtered,
-                                          dout => data_triggered,
-                                          trace_op => trace_op,
-                                          timer_value <= timer_value,
-                                          trigger_cfg_in <= trigger_cfg );
-        analyzer_trace_ram trace(  clk <- clk, reset_n <= reset_n,
-                                   trace_op <= trace_op,
-                                   din <= data_triggered,
-                                   fifo_status_l => trace_fifo_status[0],
-                                   fifo_status_h => trace_fifo_status[1],
-
-                                   trace_req <= trace_req,
-                                   trace_resp => trace_resp,
-
-                                   trace_cfg <= trace_cfg );
     }
 }

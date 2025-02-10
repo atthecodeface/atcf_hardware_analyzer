@@ -167,18 +167,6 @@ typedef enum[3] {
     blah,
 } t_analyzer_trigger_cfg_match_data_src;
 
-/*t t_analyzer_trigger_cfg_data_action
- */
-typedef struct {
-    bit[3] cond_0;
-    bit[3] cond_1;
-    bit[3] cond_2;
-    bit[3] cond_3;
-    bit record_time;
-    bit record_data;
-    bit halt_capture;
-    bit[2] capture_data;
-} t_analyzer_trigger_cfg_data_action;
 
 /*t t_analyzer_trigger_cfg_data_source
  */
@@ -199,6 +187,12 @@ typedef struct {
     bit start;
     bit stop;
     bit[2] timer_div;
+    t_analyzer_trigger_cfg_match_data_src match_data_src_0;
+    t_analyzer_trigger_cfg_match_data_src match_data_src_1;
+    t_analyzer_trigger_cfg_byte tb_0;    
+    t_analyzer_trigger_cfg_byte tb_1;    
+    t_analyzer_trigger_cfg_byte tb_2;    
+    t_analyzer_trigger_cfg_byte tb_3;    
     bit[48] action_set "Sixteen 3-bit action sets; the index is taken from bundling the 4 matched bits";
     t_analyzer_trigger_cfg_actions actions_0 "Actions used based on action_set";
     t_analyzer_trigger_cfg_actions actions_1 "Actions used based on action_set";
@@ -210,14 +204,6 @@ typedef struct {
     t_analyzer_trigger_cfg_actions actions_7 "Actions used based on action_set";
     t_analyzer_trigger_cfg_data_src data_src_0;
     t_analyzer_trigger_cfg_data_src data_src_1;
-    t_analyzer_trigger_cfg_match_data_src match_data_src_0;
-    t_analyzer_trigger_cfg_match_data_src match_data_src_1;
-    t_analyzer_trigger_cfg_byte tb_0;    
-    t_analyzer_trigger_cfg_byte tb_1;    
-    t_analyzer_trigger_cfg_byte tb_2;    
-    t_analyzer_trigger_cfg_byte tb_3;    
-    t_analyzer_trigger_cfg_data_action data_action_0;
-    t_analyzer_trigger_cfg_data_action data_action_1;
     t_analyzer_trigger_cfg_data_source data_source_0;
     t_analyzer_trigger_cfg_data_source data_source_1;
 } t_analyzer_trigger_cfg;
