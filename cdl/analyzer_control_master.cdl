@@ -93,6 +93,7 @@ a 'select_at'.
     analyzer_tgt_capture "Record analyzer_tgt": {
         mst_ctl_resp = {
             completed = actl_state.completed,
+            selected = actl_state.tgt.selected,
             count = actl_state.data[16;0]
         };
         if (actl_state.mst.enable ||

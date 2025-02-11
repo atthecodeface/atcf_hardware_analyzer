@@ -60,6 +60,7 @@ typedef struct {
  */
 typedef struct {
     bit[16] count;
+    bit selected;
     bit completed;
 } t_analyzer_mst_ctl_resp;
 

@@ -70,7 +70,9 @@ module tb_analyzer_ctl( clock clk,
                                     analyzer_tgt => tgt[i],
                               
                                     analyzer_ctl => ctl[i],
-                                    analyzer_data <= analyzer_data[i]
+                                    analyzer_data <= analyzer_data[i],
+
+                                    analyzer_tgt_id <= i
                 );
         }
     }

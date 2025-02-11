@@ -115,6 +115,7 @@ a 'select_at'.
         part_switch (apb_state.access) {
         case access_read_status: {
             apb_response.prdata[16;0] = mst_ctl_resp.count[16;0];
+            apb_response.prdata[30] = mst_ctl_resp.selected;
             apb_response.prdata[31] = mst_ctl_resp.completed;
         }
         }

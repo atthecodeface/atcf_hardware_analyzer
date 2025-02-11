@@ -90,14 +90,15 @@ module analyzer_target( clock clk,
                         input  t_analyzer_mst  analyzer_mst,
                         output t_analyzer_tgt  analyzer_tgt,
                         output t_analyzer_ctl analyzer_ctl,
-                        input t_analyzer_data4 analyzer_data
+                        input t_analyzer_data4 analyzer_data,
+                        input bit[32] analyzer_tgt_id
     )
 {
     timing to     rising clock clk analyzer_mst;
     timing from   rising clock clk analyzer_tgt;
 
     timing from   rising clock clk analyzer_ctl;
-    timing to     rising clock clk analyzer_data;
+    timing to     rising clock clk analyzer_data, analyzer_tgt_id;
 }
 
 

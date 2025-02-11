@@ -45,13 +45,14 @@ class ApbAnalyzerTest_Base(ThExecFile):
     def run__init(self) -> None:
         self.apb = ApbMaster(self, "apb_request",  "apb_response")
         self.apb_map = TbApbAddressMap()
-        self.analyzer_map    = self.apb_map.analyzer_cfg
         self.bfm_wait(10)
         pass
     #f run
     def run(self) -> None:
         self.verbose.message(f"Test {self.__class__.__name__}")
         self.verbose.set_level(self.verbose.level_info)
+
+        self.apb.reg(self.apb_map.analyzer_src.cfg).write(0x11110001)
 
         self.apb.reg(self.apb_map.analyzer_ctl.select).write(1<<31)
         self.bfm_wait(10)

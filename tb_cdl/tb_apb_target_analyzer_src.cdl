@@ -165,7 +165,10 @@ module tb_apb_target_analyzer_src( clock clk,
                              analyzer_tgt => analyzer_tgt,
                               
                              analyzer_ctl => analyzer_ctl,
-                             analyzer_data <= analyzer_data
+                             analyzer_data <= analyzer_data,
+
+                             analyzer_tgt_id <= 32h0000_feed
+                            
             );
     }
 

@@ -85,7 +85,7 @@ class AnalyzerCtlTest_Base(ThExecFile):
         self.bfm_wait(100)
         x = self.analyzer_status.read()
         self.compare_expected("Status top bit",1,x>>31)
-        self.compare_expected("Status low",0x1c,x&0x7fffffff)
+        self.compare_expected("Status low",0x1c,x&0xffffff)
 
         # Clear the enable
         #
@@ -97,7 +97,7 @@ class AnalyzerCtlTest_Base(ThExecFile):
         self.bfm_wait(100)
         x = self.analyzer_status.read()
         self.compare_expected("Status top bit",1,x>>31)
-        # self.compare_expected("Status low",0x1c,x&0x7fffffff)
+        # self.compare_expected("Status low",0x1c,x&0xffffff)
 
         # Enable tgt 4 (3 is at 9, 2 is at 6, etc)
         self.verbose.info("Enable with select at cycle 12 (three cycles per target), wait, expect it to run and then complete")

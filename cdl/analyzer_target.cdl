@@ -61,7 +61,8 @@ module analyzer_target( clock clk,
                         output t_analyzer_tgt  analyzer_tgt,
 
                         output t_analyzer_ctl  analyzer_ctl,
-                        input t_analyzer_data4 analyzer_data
+                        input t_analyzer_data4 analyzer_data,
+                        input bit[32] analyzer_tgt_id
     )
 """
 This module is included by components that need to drive the analyzer trace bus.
@@ -179,14 +180,8 @@ data supplied on the master control bus control how the client's four
             analyzer_state.ctl_data_valid <= 1;
 
             analyzer_state.ctl.mux_control <= (analyzer_state.ctl.mux_control<<4);
-            analyzer_state.ctl.mux_control[4;0] <= analyzer_mst.data;
-
-            if (analyzer_config_trace_width < 4) {
-                analyzer_state.ctl.mux_control[4;0] <= analyzer_state.data_mux_sel;
-                analyzer_state.data_mux_sel <= analyzer_mst.data;
-            } else {
-                analyzer_state.data_mux_sel <= 0;
-            }
+            analyzer_state.ctl.mux_control[4;0] <= analyzer_state.data_mux_sel;
+            analyzer_state.data_mux_sel <= analyzer_mst.data;
         }
 
         if (analyzer_combs.ready_begin) {
@@ -204,16 +199,20 @@ data supplied on the master control bus control how the client's four
     }
 
     /*b Analyzer data from client */
-    analyzer_data : {
-        if (analyzer_state.ctl.enable && (analyzer_state.data.valid || analyzer_data.valid)) {
+    analyzer_data_logic : {
+        if (analyzer_state.ctl.enable && (analyzer_state.data_mux_sel[3] || analyzer_state.data.valid || analyzer_data.valid)) {
             analyzer_state.data <= {*=0};
-            analyzer_state.data.valid <= analyzer_data.valid;
-            if (analyzer_data.valid) {
-                analyzer_state.data.data_0 <= analyzer_data.data_0;
-                analyzer_state.data.data_1 <= analyzer_data.data_1;
-                analyzer_state.data.data_2 <= analyzer_data.data_2;
-                analyzer_state.data.data_3 <= analyzer_data.data_3;
-                full_switch (analyzer_state.data_mux_sel[3;0]) {
+            if (analyzer_state.data_mux_sel[3]) {
+                analyzer_state.data.valid <= 1;
+                analyzer_state.data.data_0 <= analyzer_tgt_id;
+            }  else {
+                analyzer_state.data.valid <= analyzer_data.valid;
+                if (analyzer_data.valid) {
+                    analyzer_state.data.data_0 <= analyzer_data.data_0;
+                    analyzer_state.data.data_1 <= analyzer_data.data_1;
+                    analyzer_state.data.data_2 <= analyzer_data.data_2;
+                    analyzer_state.data.data_3 <= analyzer_data.data_3;
+                    full_switch (analyzer_state.data_mux_sel[3;0]) {
                     case 3b001: {
                         analyzer_state.data.data_1 <= analyzer_data.data_2;
                     }
@@ -241,6 +240,7 @@ data supplied on the master control bus control how the client's four
                     }
                     default: {
                         analyzer_state.data.data_0 <= analyzer_data.data_0;
+                    }
                     }
                 }
             }

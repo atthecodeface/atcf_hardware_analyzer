@@ -1,10 +1,11 @@
 #a Imports
 from cdl.utils.csr   import Csr, CsrField, CsrFieldZero, Map, MapCsr, MapMap
 
-#a CSRs
+#a CSRs for Ctl
 class CtlStatusCsr(Csr):
     _fields = {0:  CsrField(width=24, name="count", brief="cnt", doc="24-bit count"),
-               31: CsrField(name="completed", brief="comp", doc="Asserted if the sate machine has completed"),
+               30: CsrField(name="selected", brief="sel", doc="Asserted if a target is selected"),
+               31: CsrField(name="completed", brief="comp", doc="Asserted if the state machine has completed"),
               }
 class CtlSelectCsr(Csr):
     _fields = {0:  CsrField(width=32, name="count", brief="cnt", doc="32-bit count"),
@@ -29,7 +30,7 @@ class AnalyzerCtlAddressMap(Map):
              ]
              
 
-#a CSRs
+#a CSRs for Cfg
 class FilterMaskCsr(Csr):
     _fields = {0:  CsrField(width=32, name="mask", brief="mask", doc="32-bit mask value"),
               }
@@ -53,6 +54,25 @@ class AnalyzerCfgAddressMap(Map):
              MapCsr(reg=15, name="filter_match3", brief="fmatch3", csr=FilterMatchCsr, doc=""),
              ]
              
+#a CSRs for TbSrc
+class TbSrcConfigCsr(Csr):
+    _fields = {0:  CsrField(width=4, name="tgt_mode", brief="tgt", doc="Invalid, Valid, ..."),
+               16: CsrField(width=3, name="op_mode0", brief="op0", doc="Op mode for data 0"),
+               20: CsrField(width=3, name="op_mode1", brief="op1", doc="Op mode for data 1"),
+               24: CsrField(width=3, name="op_mode2", brief="op2", doc="Op mode for data 2"),
+               28: CsrField(width=3, name="op_mode3", brief="op3", doc="Op mode for data 3"),
+              }
+class TbSrcDataCsr(Csr):
+    _fields = {0:  CsrField(width=32, name="data", brief="data", doc="32-bit data value"),
+              }
+class TbAnalyzerSrcAddressMap(Map):
+    _map = [ MapCsr(reg=0, name="config", brief="cfg", csr=TbSrcConfigCsr, doc=""),
+             MapCsr(reg=4, name="data0", brief="d0", csr=TbSrcDataCsr, doc=""),
+             MapCsr(reg=5, name="data1", brief="d1", csr=TbSrcDataCsr, doc=""),
+             MapCsr(reg=6, name="data2", brief="d2", csr=TbSrcDataCsr, doc=""),
+             MapCsr(reg=7, name="data3", brief="d3", csr=TbSrcDataCsr, doc=""),
+             ]
+             
 #c TbApbAddressMap
 class TbApbAddressMap(Map):
     _width=32
@@ -60,8 +80,9 @@ class TbApbAddressMap(Map):
     _address=0
     _shift=0
     _address_size=0
-    _map=[MapMap(offset=0, name="analyzer_cfg", map=AnalyzerCfgAddressMap),
-          MapMap(offset=1024, name="analyzer_ctl", map=AnalyzerCtlAddressMap),
+    _map=[MapMap(offset=0x000, name="analyzer_cfg", map=AnalyzerCfgAddressMap),
+          MapMap(offset=0x400, name="analyzer_ctl", map=AnalyzerCtlAddressMap),
+          MapMap(offset=0xc00, name="analyzer_src", map=TbAnalyzerSrcAddressMap),
          ]
     pass
 
