@@ -46,14 +46,12 @@ typedef enum [4] {
 typedef enum [4] {
     apb_trigger_base               = 0,
     apb_trigger_match_data_src     = 1, // 12
-    apb_trigger_data_src_action_0  = 2, // 3+12+6
-    apb_trigger_data_src_action_1  = 3, // 3+12+6
-    apb_trigger_byte_0          = 4, // 22
-    apb_trigger_byte_1          = 5, // 22
-    apb_trigger_byte_2          = 6, // 22
-    apb_trigger_byte_3          = 7, // 22
-    apb_trigger_action_set_0    = 8, // 24 - map 4-bit bundle of matches to one of 8 sets-of-actions
-    apb_trigger_action_set_1    = 9, // 24 - map 4-bit bundle of matches to one of 8 sets-of-actions
+    apb_trigger_match_byte_0          = 4, // 22
+    apb_trigger_match_byte_1          = 5, // 22
+    apb_trigger_match_byte_2          = 6, // 22
+    apb_trigger_match_byte_3          = 7, // 22
+    apb_trigger_set_0    = 8, // 24 - map 4-bit bundle of matches to one of 8 sets-of-actions
+    apb_trigger_set_1    = 9, // 24 - map 4-bit bundle of matches to one of 8 sets-of-actions
     apb_trigger_actions_0       = 10, // 4 * 6 - four sets-of-actions
     apb_trigger_actions_1       = 11, // 4 * 6 - four sets-of-actions
 } t_apb_trigger_ofs;
@@ -98,6 +96,7 @@ typedef struct {
 /*t t_apb_state */
 typedef struct {
     t_access access;
+    bit[32] write_data;
     bit[4] ofs;
     t_analyzer_filter_cfg filter_cfg;
     t_analyzer_trigger_cfg trigger_cfg;
@@ -174,6 +173,7 @@ synthesize out the unused configuration flops.
         /*b Decode access */
         apb_state.access <= access_none;
         apb_state.ofs <= apb_request.paddr[4;0];
+        apb_state.write_data <= apb_request.pwdata;
         part_switch (apb_request.paddr[4;4]) {
         case apb_address_trigger: {
             apb_state.access <= apb_request.pwrite ? access_write_trigger: access_read_trigger;
@@ -188,51 +188,154 @@ synthesize out the unused configuration flops.
         if (!apb_request.psel || (apb_request.penable && apb_response.pready)) {
             apb_state.access <= access_none;
             apb_state.ofs <= apb_state.ofs;
+            apb_state.write_data <= apb_state.write_data;
         }
     }
 
     /*b Filter config
      */
     filter_config_logic "Filter configuration logic": {
-        apb_state.trigger_cfg <= apb_state.trigger_cfg;
         apb_state.trace_cfg <= apb_state.trace_cfg;
 
         /*b Keep state */
         full_switch (apb_state.ofs) {
         case apb_filter_base: {
-            apb_state.filter_cfg.enable <= apb_request.pwdata[0];
-            apb_state.filter_cfg.accept_unchanging <= apb_request.pwdata[1];
+            apb_state.filter_cfg.enable <= apb_state.write_data[0];
+            apb_state.filter_cfg.accept_unchanging <= apb_state.write_data[1];
         }
         case apb_filter_mask_0: {
-            apb_state.filter_cfg.mask.data_0 <= apb_request.pwdata;
+            apb_state.filter_cfg.mask.data_0 <= apb_state.write_data;
         }
         case apb_filter_mask_1: {
-            apb_state.filter_cfg.mask.data_1 <= apb_request.pwdata;
+            apb_state.filter_cfg.mask.data_1 <= apb_state.write_data;
         }
         case apb_filter_mask_2: {
-            apb_state.filter_cfg.mask.data_2 <= apb_request.pwdata;
+            apb_state.filter_cfg.mask.data_2 <= apb_state.write_data;
         }
         case apb_filter_mask_3: {
-            apb_state.filter_cfg.mask.data_3 <= apb_request.pwdata;
+            apb_state.filter_cfg.mask.data_3 <= apb_state.write_data;
         }
         case apb_filter_value_0: {
-            apb_state.filter_cfg.value.data_0 <= apb_request.pwdata;
+            apb_state.filter_cfg.value.data_0 <= apb_state.write_data;
         }
         case apb_filter_value_1: {
-            apb_state.filter_cfg.value.data_1 <= apb_request.pwdata;
+            apb_state.filter_cfg.value.data_1 <= apb_state.write_data;
         }
         case apb_filter_value_2: {
-            apb_state.filter_cfg.value.data_2 <= apb_request.pwdata;
+            apb_state.filter_cfg.value.data_2 <= apb_state.write_data;
         }
         case apb_filter_value_3: {
-            apb_state.filter_cfg.value.data_3 <= apb_request.pwdata;
+            apb_state.filter_cfg.value.data_3 <= apb_state.write_data;
+        }
+        }
+
+        full_switch (apb_state.ofs) {
+        case apb_trigger_base: {
+            apb_state.trigger_cfg.enable <= apb_state.write_data[0];
+            apb_state.trigger_cfg.clear <= apb_state.write_data[1];
+            apb_state.trigger_cfg.start <= apb_state.write_data[2];
+            apb_state.trigger_cfg.stop <= apb_state.write_data[3];
+            apb_state.trigger_cfg.timer_div <= apb_state.write_data[2; 8];
+        }
+        case apb_trigger_match_data_src: {
+            apb_state.trigger_cfg.data_src_0 <= apb_state.write_data[2; 0];
+            apb_state.trigger_cfg.data_src_1 <= apb_state.write_data[2; 8];
+            apb_state.trigger_cfg.match_data_src_0 <= apb_state.write_data[3; 16];
+            apb_state.trigger_cfg.match_data_src_1 <= apb_state.write_data[3; 24];
+        }
+        case apb_trigger_match_byte_0: {
+            apb_state.trigger_cfg.tb_0.ignore_valid <= apb_state.write_data[0];
+            apb_state.trigger_cfg.tb_0.byte_sel <= apb_state.write_data[3; 8];
+            apb_state.trigger_cfg.tb_0.cond_sel <= apb_state.write_data[2; 12];
+            apb_state.trigger_cfg.tb_0.mask <= apb_state.write_data[8; 16];
+            apb_state.trigger_cfg.tb_0.match <= apb_state.write_data[8; 24];
+        }
+        case apb_trigger_match_byte_1: {
+            apb_state.trigger_cfg.tb_1.ignore_valid <= apb_state.write_data[0];
+            apb_state.trigger_cfg.tb_1.byte_sel <= apb_state.write_data[3; 8];
+            apb_state.trigger_cfg.tb_1.cond_sel <= apb_state.write_data[2; 12];
+            apb_state.trigger_cfg.tb_1.mask <= apb_state.write_data[8; 16];
+            apb_state.trigger_cfg.tb_1.match <= apb_state.write_data[8; 24];
+        }
+        case apb_trigger_match_byte_2: {
+            apb_state.trigger_cfg.tb_2.ignore_valid <= apb_state.write_data[0];
+            apb_state.trigger_cfg.tb_2.byte_sel <= apb_state.write_data[3; 8];
+            apb_state.trigger_cfg.tb_2.cond_sel <= apb_state.write_data[2; 12];
+            apb_state.trigger_cfg.tb_2.mask <= apb_state.write_data[8; 16];
+            apb_state.trigger_cfg.tb_2.match <= apb_state.write_data[8; 24];
+        }
+        case apb_trigger_match_byte_3: {
+            apb_state.trigger_cfg.tb_3.ignore_valid <= apb_state.write_data[0];
+            apb_state.trigger_cfg.tb_3.byte_sel <= apb_state.write_data[3; 8];
+            apb_state.trigger_cfg.tb_3.cond_sel <= apb_state.write_data[2; 12];
+            apb_state.trigger_cfg.tb_3.mask <= apb_state.write_data[8; 16];
+            apb_state.trigger_cfg.tb_3.match <= apb_state.write_data[8; 24];
+        }
+        case apb_trigger_set_0: {
+            apb_state.trigger_cfg.action_set[24; 0] <= apb_state.write_data[24; 0];
+        }
+        case apb_trigger_set_1: {
+            apb_state.trigger_cfg.action_set[24; 24] <= apb_state.write_data[24; 0];
+        }
+        case apb_trigger_actions_0: {
+            apb_state.trigger_cfg.actions_0.halt_capture       <= apb_state.write_data[0];
+            apb_state.trigger_cfg.actions_0.record_data        <= apb_state.write_data[1];
+            apb_state.trigger_cfg.actions_0.record_time        <= apb_state.write_data[2];
+            apb_state.trigger_cfg.actions_0.record_invalidate  <= apb_state.write_data[3];
+            apb_state.trigger_cfg.actions_0.capture_data       <= apb_state.write_data[2; 4];
+
+            apb_state.trigger_cfg.actions_1.halt_capture       <= apb_state.write_data[8];
+            apb_state.trigger_cfg.actions_1.record_data        <= apb_state.write_data[9];
+            apb_state.trigger_cfg.actions_1.record_time        <= apb_state.write_data[10];
+            apb_state.trigger_cfg.actions_1.record_invalidate  <= apb_state.write_data[11];
+            apb_state.trigger_cfg.actions_1.capture_data       <= apb_state.write_data[2; 12];
+
+            apb_state.trigger_cfg.actions_2.halt_capture       <= apb_state.write_data[16];
+            apb_state.trigger_cfg.actions_2.record_data        <= apb_state.write_data[17];
+            apb_state.trigger_cfg.actions_2.record_time        <= apb_state.write_data[18];
+            apb_state.trigger_cfg.actions_2.record_invalidate  <= apb_state.write_data[19];
+            apb_state.trigger_cfg.actions_2.capture_data       <= apb_state.write_data[2; 20];
+
+            apb_state.trigger_cfg.actions_3.halt_capture       <= apb_state.write_data[24];
+            apb_state.trigger_cfg.actions_3.record_data        <= apb_state.write_data[25];
+            apb_state.trigger_cfg.actions_3.record_time        <= apb_state.write_data[26];
+            apb_state.trigger_cfg.actions_3.record_invalidate  <= apb_state.write_data[27];
+            apb_state.trigger_cfg.actions_3.capture_data       <= apb_state.write_data[2; 28];
+        }
+        case apb_trigger_actions_1: {
+            apb_state.trigger_cfg.actions_4.halt_capture       <= apb_state.write_data[0];
+            apb_state.trigger_cfg.actions_4.record_data        <= apb_state.write_data[1];
+            apb_state.trigger_cfg.actions_4.record_time        <= apb_state.write_data[2];
+            apb_state.trigger_cfg.actions_4.record_invalidate  <= apb_state.write_data[3];
+            apb_state.trigger_cfg.actions_4.capture_data       <= apb_state.write_data[2; 4];
+
+            apb_state.trigger_cfg.actions_5.halt_capture       <= apb_state.write_data[8];
+            apb_state.trigger_cfg.actions_5.record_data        <= apb_state.write_data[9];
+            apb_state.trigger_cfg.actions_5.record_time        <= apb_state.write_data[10];
+            apb_state.trigger_cfg.actions_5.record_invalidate  <= apb_state.write_data[11];
+            apb_state.trigger_cfg.actions_5.capture_data       <= apb_state.write_data[2; 12];
+
+            apb_state.trigger_cfg.actions_6.halt_capture       <= apb_state.write_data[16];
+            apb_state.trigger_cfg.actions_6.record_data        <= apb_state.write_data[17];
+            apb_state.trigger_cfg.actions_6.record_time        <= apb_state.write_data[18];
+            apb_state.trigger_cfg.actions_6.record_invalidate  <= apb_state.write_data[19];
+            apb_state.trigger_cfg.actions_6.capture_data       <= apb_state.write_data[2; 20];
+
+            apb_state.trigger_cfg.actions_7.halt_capture       <= apb_state.write_data[24];
+            apb_state.trigger_cfg.actions_7.record_data        <= apb_state.write_data[25];
+            apb_state.trigger_cfg.actions_7.record_time        <= apb_state.write_data[26];
+            apb_state.trigger_cfg.actions_7.record_invalidate  <= apb_state.write_data[27];
+            apb_state.trigger_cfg.actions_7.capture_data       <= apb_state.write_data[2; 28];
         }
         default: {
-            apb_state.filter_cfg <= apb_state.filter_cfg;
+            apb_state.trigger_cfg <= apb_state.trigger_cfg;
         }
         }
         if (apb_state.access != access_write_filter) {
             apb_state.filter_cfg <= apb_state.filter_cfg;
+        }
+        if (apb_state.access != access_write_trigger) {
+            apb_state.trigger_cfg <= apb_state.trigger_cfg;
         }
 
         apb_combs.trigger_read_data = 0;

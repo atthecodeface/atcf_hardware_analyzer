@@ -188,6 +188,8 @@ typedef struct {
     bit start;
     bit stop;
     bit[2] timer_div;
+    t_analyzer_trigger_cfg_data_src data_src_0;
+    t_analyzer_trigger_cfg_data_src data_src_1;
     t_analyzer_trigger_cfg_match_data_src match_data_src_0;
     t_analyzer_trigger_cfg_match_data_src match_data_src_1;
     t_analyzer_trigger_cfg_byte tb_0;    
@@ -203,8 +205,6 @@ typedef struct {
     t_analyzer_trigger_cfg_actions actions_5 "Actions used based on action_set";
     t_analyzer_trigger_cfg_actions actions_6 "Actions used based on action_set";
     t_analyzer_trigger_cfg_actions actions_7 "Actions used based on action_set";
-    t_analyzer_trigger_cfg_data_src data_src_0;
-    t_analyzer_trigger_cfg_data_src data_src_1;
     t_analyzer_trigger_cfg_data_source data_source_0;
     t_analyzer_trigger_cfg_data_source data_source_1;
 } t_analyzer_trigger_cfg;
