@@ -20,7 +20,7 @@ from regress.apb.structs import t_apb_request, t_apb_response
 from regress.apb.bfm     import ApbMaster
 from queue import Queue
 from regress.utils import t_dprintf_req_4, t_dprintf_byte, Dprintf, t_dbg_master_request, t_dbg_master_response, DprintfBus, SramAccessBus, SramAccessRead, SramAccessWrite, DbgMaster, DbgMasterMuxScript, DbgMasterSramScript, DbgMasterFifoScript, FifoStatus, t_sram_access_req, t_sram_access_resp
-from regress.analyzer import target_analyzer_ctl, t_analyzer_data4
+from regress.analyzer import t_analyzer_data4, AnalyzerCtlAddressMap
 
 from cdl.utils   import csr
 from cdl.sim     import ThExecFile, LogEventParser
@@ -35,7 +35,7 @@ class ApbAddressMap(csr.Map):
     _address=0
     _shift=0
     _address_size=0
-    _map=[csr.MapMap(offset=0, name="analyzer_ctl", map=target_analyzer_ctl.AnalyzerCtlAddressMap),
+    _map=[csr.MapMap(offset=0, name="analyzer_ctl", map=AnalyzerCtlAddressMap),
          ]
     pass
 
@@ -116,7 +116,7 @@ class AnalyzerCtlTest_Base(ThExecFile):
         self.verbose.info("Selected; write the data out")
 
         # Write 0x94 to tgt 4
-        self.analyzer_write_data.write(0x94)
+        self.analyzer_write_data.write(0x940)
         self.bfm_wait(30)
 
         x = self.analyzer_data4__data_0.value()
