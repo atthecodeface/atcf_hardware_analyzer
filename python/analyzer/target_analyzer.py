@@ -31,6 +31,7 @@ class AnalyzerCtlAddressMap(Map):
              
 
 #a CSRs for Cfg
+#c Filter
 class FilterMaskCsr(Csr):
     _fields = {0:  CsrField(width=32, name="mask", brief="mask", doc="32-bit mask value"),
               }
@@ -41,6 +42,7 @@ class FilterBaseCsr(Csr):
     _fields = {0:  CsrField(width=1, name="enable", brief="en", doc="set to enable filter"),
                1:  CsrField(width=1, name="unchaning", brief="en", doc="set to accept unchanging values"),
               }
+#c Trigger
 class TriggerSimpleBaseCsr(Csr):
     _fields = {0:  CsrField(width=1, name="enable", brief="en", doc="Set to enable the trigger"),
                1:  CsrField(width=1, name="clear", brief="clr", doc="Set to clear the trigger"),
@@ -72,6 +74,7 @@ class TriggerSimpleActionsCsr(Csr):
     _fields = {0:  CsrField(width=32, name="actions", brief="actions", doc="Actions"),
               }
 
+#c Address map
 class AnalyzerCfgAddressMap(Map):
     _map = [ MapCsr(reg=0, name="filter_base", brief="fbase", csr=FilterBaseCsr, doc=""),
              MapCsr(reg=8, name="filter_mask0", brief="fmask0", csr=FilterMaskCsr, doc=""),
@@ -83,16 +86,16 @@ class AnalyzerCfgAddressMap(Map):
              MapCsr(reg=14, name="filter_match2", brief="fmatch2", csr=FilterMatchCsr, doc=""),
              MapCsr(reg=15, name="filter_match3", brief="fmatch3", csr=FilterMatchCsr, doc=""),
 
-             MapCsr(reg=15, name="trigger_base", brief="tbase", csr=TriggerSimpleBaseCsr, doc=""),
-             MapCsr(reg=15, name="trigger_srcs", brief="tsrc", csr=TriggerSimpleMatchDataCsr, doc=""),
-             MapCsr(reg=15, name="trigger_match_byte_0", brief="tmb0", csr=TriggerSimpleMatchByteCsr, doc=""),
-             MapCsr(reg=15, name="trigger_match_byte_1", brief="tmb1", csr=TriggerSimpleMatchByteCsr, doc=""),
-             MapCsr(reg=15, name="trigger_match_byte_2", brief="tmb2", csr=TriggerSimpleMatchByteCsr, doc=""),
-             MapCsr(reg=15, name="trigger_match_byte_3", brief="tmb3", csr=TriggerSimpleMatchByteCsr, doc=""),
-             MapCsr(reg=15, name="trigger_set_0", brief="tset0", csr=TriggerSimpleActionSetCsr, doc="Which actions to use for match_bytes bus 0 to 7; three bits each"),
-             MapCsr(reg=15, name="trigger_set_1", brief="tset1", csr=TriggerSimpleActionSetCsr, doc="Which actions to use for match_bytes bus 8 to 15; three bits each"),
-             MapCsr(reg=15, name="trigger_actions_0", brief="tas0", csr=TriggerSimpleActionsCsr, doc="8 action sets (halt capture, record data, record time, record invalidate)"),
-             MapCsr(reg=15, name="trigger_actions_1", brief="tas1", csr=TriggerSimpleActionsCsr, doc="data capture"),
+             MapCsr(reg=16, name="trigger_base", brief="tbase", csr=TriggerSimpleBaseCsr, doc=""),
+             MapCsr(reg=17, name="trigger_srcs", brief="tsrc", csr=TriggerSimpleMatchDataCsr, doc=""),
+             MapCsr(reg=20, name="trigger_match_byte_0", brief="tmb0", csr=TriggerSimpleMatchByteCsr, doc=""),
+             MapCsr(reg=21, name="trigger_match_byte_1", brief="tmb1", csr=TriggerSimpleMatchByteCsr, doc=""),
+             MapCsr(reg=22, name="trigger_match_byte_2", brief="tmb2", csr=TriggerSimpleMatchByteCsr, doc=""),
+             MapCsr(reg=23, name="trigger_match_byte_3", brief="tmb3", csr=TriggerSimpleMatchByteCsr, doc=""),
+             MapCsr(reg=24, name="trigger_set_0", brief="tset0", csr=TriggerSimpleActionSetCsr, doc="Which actions to use for match_bytes bus 0 to 7; three bits each"),
+             MapCsr(reg=25, name="trigger_set_1", brief="tset1", csr=TriggerSimpleActionSetCsr, doc="Which actions to use for match_bytes bus 8 to 15; three bits each"),
+             MapCsr(reg=26, name="trigger_actions_0", brief="tas0", csr=TriggerSimpleActionsCsr, doc="8 action sets (halt capture, record data, record time, record invalidate)"),
+             MapCsr(reg=27, name="trigger_actions_1", brief="tas1", csr=TriggerSimpleActionsCsr, doc="data capture"),
              ]
              
 #a CSRs for TbSrc

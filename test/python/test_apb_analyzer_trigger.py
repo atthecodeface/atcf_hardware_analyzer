@@ -21,7 +21,7 @@ from regress.apb.bfm     import ApbMaster
 from queue import Queue
 from regress.utils import t_dprintf_req_4, t_dprintf_byte, Dprintf, t_dbg_master_request, t_dbg_master_response, DprintfBus, SramAccessBus, SramAccessRead, SramAccessWrite, DbgMaster, DbgMasterMuxScript, DbgMasterSramScript, DbgMasterFifoScript, FifoStatus, t_sram_access_req, t_sram_access_resp
 from regress.analyzer import TbApbAddressMap, Filter, t_analyzer_data4, FilterAcceptAll, FilterChanging
-from regress.analyzer import AnalyzerSrc
+from regress.analyzer import AnalyzerSrc, TriggerSimple
 
 from cdl.utils   import csr
 from cdl.sim     import ThExecFile, LogEventParser
@@ -32,12 +32,12 @@ from typing import Optional
 #c ApbAnalyzerTest_Base
 class ApbAnalyzerTest_Base(ThExecFile):
     
-    th_name = "Apb target analyzer source test harness"
+    th_name = "Apb target analyzer trigger test harness"
     tgt_mux_sel = 0
-    test_filter = FilterAcceptAll()
+    test_filter = Filter((1,0,0,0), (1,0,0,0), None, (12,0,0,0))
     num_data = 50
-    src = AnalyzerSrc()
-    timeout = 200
+    src = AnalyzerSrc([1,2,3,4])
+    timeout = 300
     #f __init__
     # This can be set at initialization time to reduce the number of explicit test cases
     def __init__(self, **kwargs) -> None:
@@ -80,11 +80,25 @@ class ApbAnalyzerTest_Base(ThExecFile):
     def run(self) -> None:
 
         self.verbose.info("Setting filter cfg")
+
+        t = TriggerSimple()
+        t.byte_match[0].value = 0xff
+                        
+        writes = []
+        writes += t.apb_writes(self.apb_map.analyzer_cfg)
+        writes += t.apb_writes_control(self.apb_map.analyzer_cfg, enable=0, clear=1, start=0, stop=0, timer_divide=0)
+        writes += t.apb_writes_control(self.apb_map.analyzer_cfg, enable=1, clear=1, start=0, stop=0, timer_divide=0)
+        writes += t.apb_writes_control(self.apb_map.analyzer_cfg, enable=1, clear=0, start=0, stop=0, timer_divide=0)
+        writes += t.apb_writes_control(self.apb_map.analyzer_cfg, enable=1, clear=0, start=1, stop=0, timer_divide=0)
+        for (r,wd) in writes:
+            self.apb.reg(r).write(wd)
+            pass
+
         for (r,wd) in self.test_filter.apb_writes(self.apb_map.analyzer_cfg):
             self.apb.reg(r).write(wd)
             pass
 
-        self.verbose.info("Configure source")
+        self.verbose.info("Conigure source")
         for (r,wd) in self.src.apb_writes(self.apb_map.analyzer_src):
             self.apb.reg(r).write(wd)
             pass
@@ -115,6 +129,7 @@ class ApbAnalyzerTest_Base(ThExecFile):
                 pass
             pass
 
+        self.verbose.info("Check data out")
         for i in range(len(filtered_data)):
             e = expected_data[i]
             f = filtered_data[i]
@@ -136,63 +151,6 @@ class ApbAnalyzerTest_Base(ThExecFile):
 
 #c ApbAnalyzerTest_0
 class ApbAnalyzerTest_0(ApbAnalyzerTest_Base):
-    # Select the id
-    tgt_mux_sel = 8
-    #f run
-    def run(self) -> None:
-        self.verbose.message(f"Enable filter so data can be seen")
-        self.apb.reg(self.apb_map.analyzer_cfg.filter_base).write(3)
-
-        # Wait for write to complete, filter to enable, and data to
-        # propagate back from target
-        self.bfm_wait(20)
-
-        tgt_id = self.analyzer_data_filtered__data_0.value()
-        self.compare_expected("Expected source id to be '0xfeed'",tgt_id, 0xfeed)
-
-        self.die_event.fire()
-        self.bfm_wait(10)
-        pass
-    pass
-
-#c ApbAnalyzerTest_1
-class ApbAnalyzerTest_1(ApbAnalyzerTest_Base):
-    test_filter = FilterAcceptAll()
-    num_data = 50
-    src = AnalyzerSrc()
-    timeout = 200
-    pass
-
-#c ApbAnalyzerTest_2
-class ApbAnalyzerTest_2(ApbAnalyzerTest_Base):
-    test_filter = FilterAcceptAll()
-    num_data = 50
-    src = AnalyzerSrc([1,2,3,4])
-    timeout = 200
-    pass
-
-#c ApbAnalyzerTest_3
-class ApbAnalyzerTest_3(ApbAnalyzerTest_Base):
-    test_filter = FilterChanging()
-    num_data = 50
-    src = AnalyzerSrc([1,2,3,4])
-    timeout = 200
-    pass
-
-#c ApbAnalyzerTest_4
-class ApbAnalyzerTest_4(ApbAnalyzerTest_Base):
-    test_filter = Filter((3,0,0,0), (1,0,0,0), (0,6,0,0))
-    num_data = 50
-    src = AnalyzerSrc([1,2,3,4])
-    timeout = 300
-    pass
-
-#c ApbAnalyzerTest_5
-class ApbAnalyzerTest_5(ApbAnalyzerTest_Base):
-    test_filter = Filter((1,0,0,0), (1,0,0,0), None, (12,0,0,0))
-    num_data = 50
-    src = AnalyzerSrc([1,2,3,4])
-    timeout = 300
     pass
 
 #a Hardware and test instantiation
@@ -217,11 +175,6 @@ class ApbAnalyzerHardware(HardwareThDut):
 class TestApbAnalyzer(TestCase):
     hw = ApbAnalyzerHardware
     _tests = {"0": (ApbAnalyzerTest_0, 1*1000, {}),
-              "1": (ApbAnalyzerTest_1, 2*1000, {}),
-              "2": (ApbAnalyzerTest_2, 2*1000, {}),
-              "3": (ApbAnalyzerTest_3, 2*1000, {}),
-              "4": (ApbAnalyzerTest_4, 2*1000, {}),
-              "5": (ApbAnalyzerTest_5, 2*1000, {}),
-              "smoke": (ApbAnalyzerTest_1, 2*1000, {}),
+              "smoke": (ApbAnalyzerTest_0, 2*1000, {}),
     }
 

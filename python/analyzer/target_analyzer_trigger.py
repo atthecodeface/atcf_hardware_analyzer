@@ -21,7 +21,8 @@ class MatchDataSrc(Enum):
     TIME = 0
     TIME_DELTA = 1
     RECORDED_DATA = 2
-    DATA = 3    
+    DATA_DELTA= 3
+    DATA = 4    
     pass
 
 #c TraceDataSrc
@@ -37,18 +38,25 @@ class TraceDataSrc(Enum):
     pass
 
 class SimpleByteMatchCond(Enum):
-    CHANGING = 0
-    NEGEDGE = 1
-    POSEDGE = 2
-    MATCH = 3
+    CHANGING = 3
+    NEGEDGE = 2
+    POSEDGE = 1
+    MATCH = 0
     pass
 
 class SimpleByteMatch:
     ignore_valid = False
     byte_sel = 0
     mask = 0
-    match = 0
+    value = 0
     cond_sel = SimpleByteMatchCond.MATCH
+    def reg_value(self):
+        data = int(self.ignore_valid)
+        data += self.byte_sel<<8
+        data += self.cond_sel.value<<12
+        data += self.mask<<16
+        data += self.value<<24
+        return data
     pass
 
 class Actions:
@@ -72,113 +80,34 @@ class TriggerSimple:
     action_sets = [0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0]
     data_sources = [TraceDataSrc.D0, TraceDataSrc.D1]
     #f __init
-    def __init__(self, mm=None, mv=None, mc=None, nz=None):
-        if mm is not None: self.match_mask = mm
-        if mv is not None: self.match_value = mv
-        if mc is not None: self.must_change = mc
-        if nz is not None: self.must_be_nonzero = nz
-        self.data = (0,0,0,0)
-        self.accept_unchanging = 1
-        if self.must_be_nonzero == (0,0,0,0):
-            self.must_be_nonzero = None
-            pass
-        if self.must_change[0]!=0:self.accept_unchanging = 0 
-        if self.must_change[1]!=0:self.accept_unchanging = 0 
-        if self.must_change[2]!=0:self.accept_unchanging = 0 
-        if self.must_change[3]!=0:self.accept_unchanging = 0
-        self.match_value = (self.match_mask[0] & self.match_value[0],
-                            self.match_mask[1] & self.match_value[1],
-                            self.match_mask[2] & self.match_value[2],
-                            self.match_mask[3] & self.match_value[3],
-                            )
-        for i in range(4):
-            assert(self.match_mask[i] & self.must_change[i] == 0, "Bad mask / match change combination in {i}")
-            pass
-        if self.must_be_nonzero is not None:
-            for i in range(4):
-                assert(self.match_mask[i] & self.must_be_nonzero[i] == 0, "Bad mask / match non-zero combination in {i}")
-                pass
-            pass
-        assert( (self.accept_unchanging==0) or (self.must_be_nonzero == None),
-                "Cannot require changing data and some as must be nonzero" )
+    def __init__(self):
         pass
     #f reset
     def reset(self):
-        self.data = (0,0,0,0)
         pass
-    #f write_filter_cfg
-    def write_filter_cfg(self, o, pfx):
-        getattr(o, pfx+"__accept_unchanging").drive(self.accept_unchanging)
-        getattr(o, pfx+"__mask__data_0").drive(self.match_mask[0])
-        getattr(o, pfx+"__mask__data_1").drive(self.match_mask[1])
-        getattr(o, pfx+"__mask__data_2").drive(self.match_mask[2])
-        getattr(o, pfx+"__mask__data_3").drive(self.match_mask[3])
-        value = [(self.match_value[i] & self.match_mask[i]) | self.must_change[i]
-                 for i in range(4)]
-        if self.must_be_nonzero is not None:
-            value = [value[i] | self.must_be_nonzero[i]
-                     for i in range(4)]
-            pass
-        getattr(o, pfx+"__value__data_0").drive(value[0])
-        getattr(o, pfx+"__value__data_1").drive(value[1])
-        getattr(o, pfx+"__value__data_2").drive(value[2])
-        getattr(o, pfx+"__value__data_3").drive(value[3])
-        pass
+    #f apb_writes_control
+    def apb_writes_control(self, map, enable, clear, start, stop, timer_divide):
+        writes = []
+        data = int(enable) + (int(clear) << 1) + (int(start) << 2) + (int(stop) << 3) + (timer_divide << 8)
+        writes.append( (map.trigger_base, data ) )
+        return writes
     #f apb_writes
     def apb_writes(self, map):
         writes = []
-        if self.accept_unchanging:
-            writes.append((map.filter_base, 3))
-            pass
-        else:
-            writes.append((map.filter_base, 1))
-            pass
-        writes.append( (map.filter_mask0, self.match_mask[0] ) )
-        writes.append( (map.filter_mask1, self.match_mask[1] ) )
-        writes.append( (map.filter_mask2, self.match_mask[2] ) )
-        writes.append( (map.filter_mask3, self.match_mask[3] ) )
-
-        value = [(self.match_value[i] & self.match_mask[i]) | self.must_change[i]
-                 for i in range(4)]
-        if self.must_be_nonzero is not None:
-            value = [value[i] | self.must_be_nonzero[i]
-                     for i in range(4)]
-            pass
-
-        writes.append( (map.filter_match0, value[0]) )
-        writes.append( (map.filter_match1, value[1]) )
-        writes.append( (map.filter_match2, value[2]) )
-        writes.append( (map.filter_match3, value[3]) )
+        srcs = self.data_src[0].value + (self.data_src[1].value << 8) + (self.match_data_src[0].value << 16) + (self.match_data_src[1].value << 24)
+        writes.append( (map.trigger_srcs, srcs ) )
+        writes.append( (map.trigger_match_byte_0, self.byte_match[0].reg_value() ) )
+        writes.append( (map.trigger_match_byte_1, self.byte_match[1].reg_value() ) )
+        writes.append( (map.trigger_match_byte_2, self.byte_match[2].reg_value() ) )
+        writes.append( (map.trigger_match_byte_3, self.byte_match[3].reg_value() ) )
+        writes.append( (map.trigger_set_0,  0 ) )
+        writes.append( (map.trigger_set_1,  0 ) )
+        writes.append( (map.trigger_actions_0,  0 ) )
+        writes.append( (map.trigger_actions_1,  0 ) )
         return writes
 
     #f apply
     def apply(self, data):
-        mismatches = False
-        for i in range(4):
-            if data[i] & self.match_mask[i] != self.match_value[i]: mismatches = True
-            pass
-        if mismatches:
-            return False
-        if self.accept_unchanging:
-            if self.must_be_nonzero is not None:
-                matched = False
-                for i in range(4):
-                    if (data[i] & self.must_be_nonzero[i]) != 0:
-                        matched = True
-                        pass
-                    pass
-                if not matched:
-                    return False
-                pass
-            self.data = data
-            return True
-        changed = False
-        for i in range(4):
-            if data[i] & self.must_change[i] != self.data[i] & self.must_change[i]: changed = True
-            pass
-        if changed:
-            self.data = data
-            pass
-        return changed
+        pass
     pass
 

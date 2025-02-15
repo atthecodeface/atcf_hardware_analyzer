@@ -104,7 +104,7 @@ This has a pipeline delay of two:
         match_combs.at_least_one  = trigger_cfg_byte.match & ~trigger_cfg_byte.mask;
         match_combs.selected_bits = trigger_cfg_byte.mask & match_combs.data_byte;
         match_combs.next_matched = (match_combs.selected_bits == match_combs.must_match);
-        if ((match_combs.at_least_one != 8h0) && ((match_combs.selected_bits & match_combs.at_least_one) == 0)) {
+        if ((match_combs.at_least_one != 8h0) && ((match_combs.data_byte & match_combs.at_least_one) == 0)) {
             match_combs.next_matched = 0;
         }
 
