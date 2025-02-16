@@ -86,13 +86,14 @@ typedef struct
 module analyzer_trace_ram( clock clk,
                            input bit reset_n,
 
-                           input  t_analyzer_trace_op4  trace_op "Includes data to use for address calculation",
+                           input  t_analyzer_trace_op4  trace_op "What operations to perform; takes precedence over access_req",
                            input  t_analyzer_data4  din "Only bottom two words are used here",
 
                            output t_fifo_status fifo_status_l,
                            output t_fifo_status fifo_status_h,
 
                            input t_analyzer_trace_access_req trace_access_req,
+                           output bit trace_access_rdy,
                            output t_analyzer_trace_access_resp trace_access_resp,
 
                            input  t_analyzer_trace_cfg trace_cfg
@@ -188,7 +189,12 @@ c. 32-bit values
     default reset active_low reset_n;
 
     /*b State and combs */
+    clocked t_analyzer_trace_op4 p0_trace_op = {*=0};
+    clocked t_analyzer_trace_op4 p1_trace_op = {*=0};
+    clocked t_analyzer_trace_op4 p2_trace_op = {*=0};
     clocked t_analyzer_data4 p0_data = {*=0};
+    clocked bit p1_data_valid = 0;
+    clocked bit p2_data_valid = 0;
     comb t_vdata_32 p0_data_0;
     comb t_vdata_32 p0_data_1;
 
@@ -202,13 +208,71 @@ c. 32-bit values
     net t_fifo_status fifo_status_l;
     net t_fifo_status fifo_status_h;
 
+    /*b Access handling
+     */
+    access_handling: {
+        if (trace_op.op_valid != 0 || p0_data.valid) {
+            p0_trace_op <= trace_op;
+            p0_data <= din;
+            p0_data.valid <= trace_op.op_valid != 0;
+        }
+        if (p0_data.valid || p1_data_valid) {
+            p1_data_valid <= p0_data.valid;
+            p1_trace_op <= p0_trace_op;
+        }
+        if (p1_data_valid || p2_data_valid) {
+            p2_data_valid <= p1_data_valid;
+            p2_trace_op <= p1_trace_op;
+        }
+        trace_access_rdy = !p2_data_valid;
+
+        for (i; 2) {
+            access_combs[i] = {*=0};
+        }
+        if (p2_data_valid) {
+            access_combs[0].read_enable = 1; // could be zero if push of 32
+            access_combs[0].write_enable = 1;
+            access_combs[0].address_op = atr_address_op_access;
+            access_combs[0].op_data = p2_data_value_0.data;
+            access_combs[0].word_address[12;0] = p2_data_ofs.data[12;0];
+            full_switch (p2_trace_op.op_0) {
+            case atr_data_op_push: {
+                access_combs[0].address_op = atr_address_op_push;
+                access_combs[0].alu_op = atr_alu_op_write32; // 8 or 16
+            }
+            case atr_data_op_write: {
+                access_combs[0].alu_op = atr_alu_op_write32; // 8 or 16
+            }
+            case atr_data_op_inc: {
+                access_combs[0].alu_op = atr_alu_op_inc32;
+            }
+            case atr_data_op_sum: {
+                access_combs[0].alu_op = atr_alu_op_sum32;
+            }
+            case atr_data_op_min: {
+                access_combs[0].alu_op = atr_alu_op_min32;
+            }
+            case atr_data_op_max: {
+                access_combs[0].alu_op = atr_alu_op_max32;
+            }
+            case atr_data_op_min_max: {
+                access_combs[0].alu_op = atr_alu_op_min_max16;
+            }
+            case atr_data_op_inc_add: {
+                access_combs[0].alu_op = atr_alu_op_inc16_add16;
+            }
+            }
+            if (!p2_trace_op.op_valid[0]) {
+                access_combs[0].read_enable = 0;
+                access_combs[0].write_enable = 0;
+            }
+        }
+    }
+
     /*b Data value logic
      */
     data_value_path "Initial data value path": {
 
-        if (din.valid || p0_data.valid) {
-            p0_data <= din;
-        }
         p0_data_0 = {valid = p0_data.valid, data=p0_data.data_0};
         p0_data_1 = {valid = p0_data.valid, data=p0_data.data_1};
 
@@ -242,9 +306,6 @@ c. 32-bit values
     /*b Datapaths
      */
     datapaths "Data paths": {
-        for (i;2) {
-            access_combs[i] = {*=0};
-        }
         analyzer_trace_ram_data_path dp_0( clk<-clk,
                                            reset_n <= reset_n,
                                            access_req <= access_combs[0],

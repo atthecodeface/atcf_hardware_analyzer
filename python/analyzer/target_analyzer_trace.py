@@ -6,6 +6,83 @@
 #a Imports
 from .analyzer import t_atr_address_op, t_atr_alu_op
 
+#a Trace configuration classes
+#c TraceCfgValue
+class TraceCfgValue:
+    base = 0
+    shift = 0
+    mask_size = 0
+    max_min = False
+    def __init__(self):
+        pass
+    def reg_values(self):
+        value = self.shift + (self.mask_size<<8) + (int(self.max_min)<<16)
+        return (self.base, value)
+    pass
+
+#c TraceCfgOffset
+class TraceCfgOffset:
+    base = 0
+    shift = 0
+    use_data_1 = False
+    no_bkts = False
+    def __init__(self):
+        pass
+
+    def reg_values(self):
+        value = self.shift + (int(self.use_data_1)<<8) + (int(self.no_bkts)<<9)
+        return (self.base, value)
+    pass
+
+#c TraceCfgFifo
+class TraceCfgFifo:
+    data_width = 32
+    journal = False
+    fifo_per_ram = False
+    ram_of_fifo = 0
+    enable_push = False
+    def __init__(self):
+        pass
+
+    def reg_value(self):
+        value = {32:2, 16:1, 8:0}[self.data_width]
+        value += int(self.journal)<<2
+        value += int(self.fifo_per_ram)<<3
+        value += self.ram_of_fifo<<4
+        value += int(self.enable_push)<<5
+        return value
+    pass
+
+#c TraceCfg
+class TraceCfg:
+    def __init__(self):
+        self.offset = TraceCfgOffset
+        self.values = (TraceCfgValue, TraceCfgValue)
+        self.fifos = (TraceCfgFifo(), TraceCfgFifo())
+        pass
+    
+    #f apb_writes_control
+    def apb_writes_control(self, map, enable:False):
+        # write enable
+        pass
+
+    #f apb_writes
+    def apb_writes(self, map):
+        writes = []
+        fifos = self.fifos[0].reg_value
+        fifos += self.fifos[1].reg_value<<16
+        writes.append( (map.trace_fifos, fifos ) )
+        (base, etc) = self.offset.reg_values()
+        writes.append( (map.trace_offset_base, base) )
+        writes.append( (map.trace_offset_shift_size, etc) )
+        (base, etc) = self.value[0].reg_values()
+        writes.append( (map.trace_value_0__base, base) )
+        writes.append( (map.trace_value_0__shift_size, etc) )
+        (base, etc) = self.value[1].reg_values()
+        writes.append( (map.trace_value_1__base, base) )
+        writes.append( (map.trace_value_1__shift_size, etc) )
+        return writes
+
 #a Trace access classes
 #c AtrAccessOp
 class AtrAccessOp:
@@ -40,6 +117,8 @@ class AtrAccessOp:
         self.write_enable = write_enable
         self.read_enable = read_enable
         pass
+
+    #f drive_access_req
     def drive_access_req(self, obj, pfx):
         getattr(obj, pfx+"__read_enable").drive(self.read_enable)
         getattr(obj, pfx+"__write_enable").drive(self.write_enable)
@@ -50,9 +129,13 @@ class AtrAccessOp:
         getattr(obj, pfx+"__op_data").drive(self.data)
         getattr(obj, pfx+"__byte_of_sram").drive(self.byte_of_sram)
         pass
+
+    #f classmethod atomic
     @classmethod
     def atomic(cls, address, data, alu_op):
         return cls(address_or_op=address, data=data, alu_op=alu_op, write_enable=1, read_enable=1)
+
+    #f classmethod write
     @classmethod
     def write(cls, address, data, width=32):
         alu_op = {8:t_atr_alu_op.write8, 16:t_atr_alu_op.write16, 32:t_atr_alu_op.write32}[width]

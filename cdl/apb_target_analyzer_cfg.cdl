@@ -151,7 +151,7 @@ synthesize out the unused configuration flops.
 
     /*b APB read
      */
-    apb_reads "APB reads": {
+    apb_read_logic "APB reads": {
 
         /*b Handle APB read data - may affect pready */
         apb_response = {*=0, pready=1};
@@ -197,9 +197,7 @@ synthesize out the unused configuration flops.
     /*b Filter config
      */
     filter_config_logic "Filter configuration logic": {
-        apb_state.trace_cfg <= apb_state.trace_cfg;
-
-        /*b Keep state */
+        /*b Write the configuration */
         full_switch (apb_state.ofs) {
         case apb_filter_base: {
             apb_state.filter_cfg.enable <= apb_state.write_data[0];
@@ -367,14 +365,65 @@ synthesize out the unused configuration flops.
         }
 
         apb_combs.trigger_read_data = 0;
-        apb_combs.trace_read_data = 0;
         if (!(apb_reads&2)) {
             apb_combs.trigger_read_data = 0;
         }
+    }
+
+    /*b Trace config
+     */
+    trace_config_logic "Trace configuration logic": {
+        /*b Write the configuration */
+        full_switch (apb_state.ofs) {
+        case apb_trace_base: {
+            apb_state.trace_cfg.enable <= apb_state.write_data[0];
+        }
+        case apb_trace_fifos: {
+            apb_state.trace_cfg.fifo_0.data_width <= apb_state.write_data[2;0];
+            apb_state.trace_cfg.fifo_0.journal <= apb_state.write_data[2];
+            apb_state.trace_cfg.fifo_0.fifo_per_ram <= apb_state.write_data[3];
+            apb_state.trace_cfg.fifo_0.ram_of_fifo <= apb_state.write_data[4];
+            apb_state.trace_cfg.fifo_0.enable_push <= apb_state.write_data[5];
+
+            apb_state.trace_cfg.fifo_1.data_width <= apb_state.write_data[2;16];
+            apb_state.trace_cfg.fifo_1.journal <= apb_state.write_data[18];
+            apb_state.trace_cfg.fifo_1.fifo_per_ram <= apb_state.write_data[19];
+            apb_state.trace_cfg.fifo_1.ram_of_fifo <= apb_state.write_data[20];
+            apb_state.trace_cfg.fifo_1.enable_push <= apb_state.write_data[21];
+        }
+        case apb_trace_offset_base: {
+            apb_state.trace_cfg.offset.base <= apb_state.write_data[24;0];
+        }
+        case apb_trace_offset_shift_size: {
+            apb_state.trace_cfg.offset.shift <= apb_state.write_data[5;0];
+            apb_state.trace_cfg.offset.use_data_1 <= apb_state.write_data[8];
+            apb_state.trace_cfg.offset.no_bkts <= apb_state.write_data[9];
+        }
+        case apb_trace_value_0_base: {
+            apb_state.trace_cfg.value_0.base <= apb_state.write_data[24;0];
+        }
+        case apb_trace_value_1_base: {
+            apb_state.trace_cfg.value_1.base <= apb_state.write_data[24;0];
+        }
+        case apb_trace_value_0_shift_size: {
+            apb_state.trace_cfg.value_0.shift <= apb_state.write_data[5;0];
+            apb_state.trace_cfg.value_0.mask_size <= apb_state.write_data[5;8];
+            apb_state.trace_cfg.value_0.max_min <= apb_state.write_data[16];
+        }
+        case apb_trace_value_1_shift_size: {
+            apb_state.trace_cfg.value_1.shift <= apb_state.write_data[5;0];
+            apb_state.trace_cfg.value_1.mask_size <= apb_state.write_data[5;8];
+            apb_state.trace_cfg.value_1.max_min <= apb_state.write_data[16];
+        }
+        }
+
+        apb_combs.trace_read_data = 0;
         if (!(apb_reads&4)) {
             apb_combs.trace_read_data = 0;
         }
-
+        if (apb_state.access != access_write_trace) {
+            apb_state.trace_cfg <= apb_state.trace_cfg;
+        }
     }
 
     /*b Done

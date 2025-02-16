@@ -111,7 +111,6 @@ typedef struct {
     t_analyzer_trace_cfg_ofs offset;
     t_analyzer_trace_cfg_fifo fifo_0;
     t_analyzer_trace_cfg_fifo fifo_1;
-    bit[2] timer_div;
 } t_analyzer_trace_cfg;
 
 /*a Types for analyzer trace */
