@@ -318,8 +318,8 @@ module analyzer_trace_ram( clock clk,
                            output t_fifo_status fifo_status_l,
                            output t_fifo_status fifo_status_h,
 
-                           input t_analyzer_trace_req trace_req,
-                           output t_analyzer_trace_resp trace_resp,
+                           input t_analyzer_trace_access_req trace_access_req,
+                           output t_analyzer_trace_access_resp trace_access_resp,
 
                            input  t_analyzer_trace_cfg trace_cfg
  )
@@ -327,8 +327,8 @@ module analyzer_trace_ram( clock clk,
      timing to rising clock clk  trace_op, din;
      timing from rising clock clk  fifo_status_l, fifo_status_h;
 
-     timing to rising clock clk  trace_req;
-     timing from rising clock clk  trace_resp;
+     timing to rising clock clk  trace_access_req;
+     timing from rising clock clk  trace_access_resp;
 
      timing to rising clock clk  trace_cfg;
 }

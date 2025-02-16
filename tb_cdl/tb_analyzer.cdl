@@ -12,12 +12,14 @@ module tb_analyzer( clock clk,
                     input  t_apb_request  apb_request  "APB request",
                     output t_apb_response apb_response "APB response",
                     output t_analyzer_data4 analyzer_data_filtered,
+                    output t_analyzer_trace_op4 analyzer_trace_op,
                     output t_analyzer_data4 analyzer_data_triggered,
                     output t_analyzer_data4 analyzer_data4
     )
 {
     net t_analyzer_mst analyzer_mst;
     net t_analyzer_tgt analyzer_tgt;
+    net t_analyzer_trace_op4 analyzer_trace_op;
 
     default clock clk;
     default reset active_low reset_n;
@@ -31,12 +33,10 @@ module tb_analyzer( clock clk,
     comb  t_timer_control_full timer_ctl;
     net t_timer_value  timer_value;
     
-    net  t_analyzer_trace_op4 trace_op;
-
     net t_fifo_status[2] trace_fifo_status;
 
-    comb t_analyzer_trace_req trace_req;
-    net t_analyzer_trace_resp trace_resp;
+    comb t_analyzer_trace_access_req trace_access_req;
+    net t_analyzer_trace_access_resp trace_access_resp;
 
     comb  t_apb_request  apb_request_ctl  "APB request to target ctl";
     comb  t_apb_request  apb_request_cfg  "APB request to target cfg";
@@ -46,7 +46,7 @@ module tb_analyzer( clock clk,
     net t_apb_response apb_response_src "APB response from target src";
 
     configuration : {
-        trace_req = {*=0};
+        trace_access_req = {*=0};
     }
 
     modules: {
@@ -101,17 +101,17 @@ module tb_analyzer( clock clk,
         analyzer_trigger_simple trigger(  clk <- clk, reset_n <= reset_n,
                                           din <= analyzer_data_filtered,
                                           dout => analyzer_data_triggered,
-                                          trace_op => trace_op,
+                                          trace_op => analyzer_trace_op,
                                           timer_value <= timer_value,
                                           trigger_cfg_in <= trigger_cfg );
         analyzer_trace_ram trace(  clk <- clk, reset_n <= reset_n,
-                                   trace_op <= trace_op,
+                                   trace_op <= analyzer_trace_op,
                                    din <= analyzer_data_triggered,
                                    fifo_status_l => trace_fifo_status[0],
                                    fifo_status_h => trace_fifo_status[1],
 
-                                   trace_req <= trace_req,
-                                   trace_resp => trace_resp,
+                                   trace_access_req <= trace_access_req,
+                                   trace_access_resp => trace_access_resp,
 
                                    trace_cfg <= trace_cfg );
     }

@@ -20,7 +20,8 @@ from regress.apb.structs import t_apb_request, t_apb_response
 from regress.apb.bfm     import ApbMaster
 from queue import Queue
 from regress.utils import t_dprintf_req_4, t_dprintf_byte, Dprintf, t_dbg_master_request, t_dbg_master_response, DprintfBus, SramAccessBus, SramAccessRead, SramAccessWrite, DbgMaster, DbgMasterMuxScript, DbgMasterSramScript, DbgMasterFifoScript, FifoStatus, t_sram_access_req, t_sram_access_resp
-from regress.analyzer import TbApbAddressMap, Filter, t_analyzer_data4, FilterAcceptAll, FilterChanging
+from regress.analyzer import t_analyzer_data4, t_analyzer_trace_op4
+from regress.analyzer import TbApbAddressMap, Filter, FilterAcceptAll, FilterChanging
 from regress.analyzer import AnalyzerSrc, TriggerSimple
 
 from cdl.utils   import csr
@@ -81,7 +82,11 @@ class ApbAnalyzerTest_Base(ThExecFile):
 
         self.verbose.info("Setting filter cfg")
 
-        t = TriggerSimple()
+        t = TriggerSimple(
+            data_srcs = ("d0", "d1"),
+            trace_data_srcs=["d0", "d1"],
+            trace_ops=["push", "write"],
+        )
         t.byte_match[0].value = 0xff
         t.action_sets[15] = 1
         t.actions[1].record_time = True
@@ -101,45 +106,54 @@ class ApbAnalyzerTest_Base(ThExecFile):
             self.apb.reg(r).write(wd)
             pass
 
-        self.verbose.info("Conigure source")
+        self.verbose.info("Configure source")
         for (r,wd) in self.src.apb_writes(self.apb_map.analyzer_src):
             self.apb.reg(r).write(wd)
             pass
 
+        t.reset()
         expected_data = []
         while len(expected_data) < self.num_data:
             d = self.src.next_valid()
-            if self.test_filter.apply(d):
-                expected_data.append(d)
+            valid = self.test_filter.apply(d)
+            trace = t.apply(d, valid)
+            if trace is not None:
+                expected_data.append(trace)
                 pass
             pass
 
-        filtered_data = []
+        trace_data = []
         time = 0
-        while len(filtered_data) < self.num_data:
+        while len(trace_data) < self.num_data:
             self.bfm_wait(1)
             time += 1
             if time > self.timeout:
-                self.failtest(f"Timeout waiting for filtered data {len(filtered_data)}")
+                self.failtest(f"Timeout waiting for trace data {len(trace_data)}")
                 break
-            if self.analyzer_data_filtered__valid.value():
-                dout = (self.analyzer_data_filtered__data_0.value(),
-                        self.analyzer_data_filtered__data_1.value(),
-                        self.analyzer_data_filtered__data_2.value(),
-                        self.analyzer_data_filtered__data_3.value()
+            if self.analyzer_trace_op__op_valid.value() != 0:
+                dout = (self.analyzer_trace_op__op_valid.value(),
+                        self.analyzer_trace_op__op_0.value(),
+                        self.analyzer_trace_op__op_1.value(),
+                        self.analyzer_data_triggered__data_0.value(),
+                        self.analyzer_data_triggered__data_1.value(),
+                        self.analyzer_data_triggered__data_2.value(),
+                        self.analyzer_data_triggered__data_3.value(),
                         )
-                filtered_data.append(dout)
+                trace_data.append(dout)
                 pass
             pass
 
         self.verbose.info("Check data out")
-        for i in range(len(filtered_data)):
+        for i in range(len(trace_data)):
             e = expected_data[i]
-            f = filtered_data[i]
+            f = trace_data[i]
             self.compare_expected(f"Filter out {i} data 0", e[0], f[0])
             self.compare_expected(f"Filter out {i} data 1", e[1], f[1])
             self.compare_expected(f"Filter out {i} data 2", e[2], f[2])
             self.compare_expected(f"Filter out {i} data 3", e[3], f[3])
+            self.compare_expected(f"Filter out {i} data 4", e[4], f[4])
+            self.compare_expected(f"Filter out {i} data 5", e[5], f[5])
+            self.compare_expected(f"Filter out {i} data 6", e[6], f[6])
             pass
         
         self.bfm_wait_until_test_done(100)
@@ -168,6 +182,7 @@ class ApbAnalyzerHardware(HardwareThDut):
     dut_outputs = {"apb_response":t_apb_response,
                    "analyzer_data4":t_analyzer_data4,
                    "analyzer_data_filtered":t_analyzer_data4,
+                   "analyzer_trace_op":t_analyzer_trace_op4,
                    "analyzer_data_triggered":t_analyzer_data4,
     }
     loggers = { # "dprintf": {"modules":"dut.dut", "verbose":1}

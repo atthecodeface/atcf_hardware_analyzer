@@ -74,6 +74,20 @@ class TriggerSimpleActionsCsr(Csr):
     _fields = {0:  CsrField(width=32, name="actions", brief="actions", doc="Actions"),
               }
 
+class TriggerTraceSourceCsr(Csr):
+    _fields = {0:  CsrField(width=3, name="data_source_0", brief="src0", doc="Data source for trace data 0"),
+              8:  CsrField(width=3, name="data_source_1", brief="src1", doc="Data source for trace data 1"),
+              16:  CsrField(width=3, name="data_source_2", brief="src2", doc="Data source for trace data 2"),
+              24:  CsrField(width=3, name="data_source_3", brief="src3", doc="Data source for trace data 3"),
+              }
+
+class TriggerTraceOpCsr(Csr):
+    _fields = {0:  CsrField(width=3, name="trace_op_0", brief="op0", doc="Trace op for capture 0"),
+              8:  CsrField(width=3, name="trace_op_1", brief="op1", doc="Trace op for capture 1"),
+              16:  CsrField(width=3, name="trace_op_2", brief="op2", doc="Trace op for capture 2"),
+              24:  CsrField(width=3, name="trace_op_3", brief="op3", doc="Trace op for capture 3"),
+              }
+
 #c Address map
 class AnalyzerCfgAddressMap(Map):
     _map = [ MapCsr(reg=0, name="filter_base", brief="fbase", csr=FilterBaseCsr, doc=""),
@@ -96,6 +110,8 @@ class AnalyzerCfgAddressMap(Map):
              MapCsr(reg=25, name="trigger_set_1", brief="tset1", csr=TriggerSimpleActionSetCsr, doc="Which actions to use for match_bytes bus 8 to 15; three bits each"),
              MapCsr(reg=26, name="trigger_actions_0", brief="tas0", csr=TriggerSimpleActionsCsr, doc="8 action sets (halt capture, record data, record time, record invalidate)"),
              MapCsr(reg=27, name="trigger_actions_1", brief="tas1", csr=TriggerSimpleActionsCsr, doc="data capture"),
+             MapCsr(reg=28, name="trace_data_source", brief="tds", csr=TriggerTraceSourceCsr, doc="trace data source capture"),
+             MapCsr(reg=29, name="trace_op", brief="tds", csr=TriggerTraceOpCsr, doc="trace operations"),
              ]
              
 #a CSRs for TbSrc

@@ -28,8 +28,8 @@ t_analyzer_trace_cfg_fifo = {
     "enable_push":1,
 }
 
-# t_address_op
-class t_address_op(IntEnum):
+# t_atr_address_op
+class t_atr_address_op(IntEnum):
     width = 3
     access = 0
     reset_ptrs = 1
@@ -37,8 +37,8 @@ class t_address_op(IntEnum):
     pop = 3
     pass
 
-# t_alu_op
-class t_alu_op(IntEnum):
+# t_atr_data_op
+class t_atr_alu_op(IntEnum):
     width = 4
     clear = 0
     write8 = 1
@@ -52,21 +52,43 @@ class t_alu_op(IntEnum):
     inc16_add16 = 9
     pass
 
-# t_access_resp
-t_access_resp = {
+
+# t_analyzer_trace_data_op
+class t_analyzer_trace_data_op(IntEnum):
+    width = 3
+    push = 0
+    write = 1
+    inc = 2
+    sum = 3
+    min = 4
+    max = 5
+    min_max = 6
+    inc_add = 7
+
+# t_analyzer_trace_op4
+t_analyzer_trace_op4 = {
+    "op_valid": 4,
+    "op_0": 3, # t_analyzer_trace_data_op,
+    "op_1": 3, # t_analyzer_trace_data_op,
+    "op_2": 3, # t_analyzer_trace_data_op,
+    "op_3": 3, # t_analyzer_trace_data_op,
+}
+
+# t_analyzer_trace_access_resp
+t_analyzer_trace_access_resp = {
     "valid": 1,
     "id": 2,
     "data": 32,
 }
 
-# t_access_combs
-t_access_combs = {
+# t_analyzer_trace_access_req
+t_analyzer_trace_access_req = {
     "read_enable":1,
     "write_enable":1,
     "id": 2,
-    "address_op": t_address_op.width.value,
-    "address": 11,
+    "address_op": t_atr_address_op.width.value,
+    "word_address": 16,
     "op_data":32,
-    "alu_op": t_alu_op.width.value,
+    "alu_op": t_atr_alu_op.width.value,
     "byte_of_sram":2,
     }

@@ -259,7 +259,7 @@ module analyzer_trace_ram_data_path( clock clk,
         access_combs.address_op = access_req.address_op;
         access_combs.op_data = access_req.op_data;
         access_combs.address = 0;
-        access_combs.address[sram_address_width;0] = access_req.address[sram_address_width;0];
+        access_combs.address[sram_address_width;0] = access_req.word_address[sram_address_width;0];
         access_combs.alu_op = access_req.alu_op;
         access_combs.byte_of_sram = access_req.byte_of_sram;
         full_switch (access_req.address_op) {

@@ -33,87 +33,21 @@ Tests for 'analyzer_trace_ram_data_path'
 #a Imports
 from queue import Queue
 from regress.utils import t_fifo_status
-from regress.analyzer import t_analyzer_data4, t_analyzer_filter_cfg, t_access_combs, t_analyzer_trace_cfg_fifo, t_address_op, t_alu_op, t_access_resp
+from regress.analyzer import t_analyzer_data4, t_analyzer_filter_cfg
+from regress.analyzer import t_analyzer_trace_cfg_fifo
+from regress.analyzer import t_analyzer_trace_access_req, t_analyzer_trace_access_resp, t_atr_address_op, t_atr_alu_op
+from regress.analyzer import AtrAccessOp
 
 from cdl.sim     import ThExecFile, LogEventParser
 from cdl.sim     import HardwareThDut
 from cdl.sim     import TestCase
 from typing import Optional
 
-#a AccessOp
-class AccessOp:
-    """
-    A trace RAM access operation
-    """
-    read_enable = 0
-    write_enable = 0
-    id = 0
-    address_op = t_address_op.access
-    address = 0
-    alu_op = t_alu_op.clear
-    data = 0
-    byte_of_sram = 0
-    def __init__(self, id=None, address_or_op=None, data=None, alu_op=None, write_enable=0, read_enable=0):
-        if id is not None:
-            self.id = id
-            pass
-        if type(address_or_op) == t_address_op:
-            self.address_op = address_or_op
-            pass
-        elif address_or_op != None:
-            self.address_op = t_address_op.access
-            self.address = address_or_op
-            pass
-        if data is not None:
-            self.data = data
-            pass
-        if alu_op is not None:
-            self.alu_op = alu_op
-            pass
-        self.write_enable = write_enable
-        self.read_enable = read_enable
-        pass
-    def drive_access_combs(self, obj, pfx):
-        getattr(obj, pfx+"__read_enable").drive(self.read_enable)
-        getattr(obj, pfx+"__write_enable").drive(self.write_enable)
-        getattr(obj, pfx+"__id").drive(self.id)
-        getattr(obj, pfx+"__address_op").drive(self.address_op.value)
-        getattr(obj, pfx+"__address").drive(self.address)
-        getattr(obj, pfx+"__alu_op").drive(self.alu_op.value)
-        getattr(obj, pfx+"__op_data").drive(self.data)
-        getattr(obj, pfx+"__byte_of_sram").drive(self.byte_of_sram)
-        pass
-    @classmethod
-    def atomic(cls, address, data, alu_op):
-        return cls(address_or_op=address, data=data, alu_op=alu_op, write_enable=1, read_enable=1)
-    @classmethod
-    def write(cls, address, data, width=32):
-        alu_op = {8:t_alu_op.write8, 16:t_alu_op.write16, 32:t_alu_op.write32}[width]
-        return cls(address_or_op=address, data=data, alu_op=alu_op, write_enable=1, read_enable=0)
-    @classmethod
-    def read(cls, address, id=1):
-        return cls(id, address_or_op=address, alu_op=t_alu_op.clear, write_enable=0, read_enable=1)
-    @classmethod
-    def push(cls, data, width=32):
-        alu_op = {8:t_alu_op.write8, 16:t_alu_op.write16, 32:t_alu_op.write32}[width]
-        read_enable = 0
-        if width!=32: read_enable = 1
-        return cls(address_or_op=t_address_op.push, data=data, alu_op=alu_op, write_enable=1, read_enable=read_enable)
-    @classmethod
-    def pop(cls, id=1):
-        return cls(id, address_or_op=t_address_op.pop, alu_op=t_alu_op.clear, write_enable=0, read_enable=1)
-    @classmethod
-    def clear(cls, address, id=1):
-        read_enable = 0
-        if id != 0: read_enable = 1
-        return cls(id, address_or_op=address, alu_op=t_alu_op.clear, write_enable=1, read_enable=read_enable)
-    pass
-
 #a AnalyzerTraceRamDataPathTests
 #c AnalyzerTraceRamDataPathTest_Base
 class AnalyzerTraceRamDataPathTest_Base(ThExecFile):
     th_name = "Analyzer trace data ram path test"
-    access_ops = [AccessOp.clear(i) for i in range(1)]
+    access_ops = [AtrAccessOp.clear(i) for i in range(1)]
     expected_data = []
     access_ops = []
     data_width = 0 # 32-bit
@@ -159,16 +93,16 @@ class AnalyzerTraceRamDataPathTest_Base(ThExecFile):
         self.trace_cfg_fifo__ram_of_fifo.drive(self.ram_of_fifo)
         self.trace_cfg_fifo__fifo_per_ram.drive(self.fifo_per_ram)
         self.trace_cfg_fifo__enable_push.drive(self.enable_push)
-        idle = AccessOp()
-        idle.drive_access_combs(self, "access_req")
+        idle = AtrAccessOp()
+        idle.drive_access_req(self, "access_req")
         self.tick()
 
         for a in self.access_ops:
-            a.drive_access_combs(self, "access_req")
+            a.drive_access_req(self, "access_req")
             self.tick()
             pass
         
-        idle.drive_access_combs(self, "access_req")
+        idle.drive_access_req(self, "access_req")
         for i in range(10):
             self.tick()
             pass
@@ -190,9 +124,9 @@ class AnalyzerTraceRamDataPathTest_0(AnalyzerTraceRamDataPathTest_Base):
     """
     expected_data = [i for i in range(100)]
     expected_data += [0] * 100
-    access_ops  = [AccessOp.write(i, i) for i in range(100)]
-    access_ops += [AccessOp.clear(i, id=1) for i in range(100)]
-    access_ops += [AccessOp.read(i) for i in range(100)]
+    access_ops  = [AtrAccessOp.write(i, i) for i in range(100)]
+    access_ops += [AtrAccessOp.clear(i, id=1) for i in range(100)]
+    access_ops += [AtrAccessOp.read(i) for i in range(100)]
     pass
 
 #c AnalyzerTraceRamDataPathTest_1
@@ -201,8 +135,8 @@ class AnalyzerTraceRamDataPathTest_1(AnalyzerTraceRamDataPathTest_Base):
     Check that push works
     """
     expected_data = [i for i in range(100)]
-    access_ops = [AccessOp.push(i) for i in range(100)]
-    access_ops += [AccessOp.pop() for i in range(100)]
+    access_ops = [AtrAccessOp.push(i) for i in range(100)]
+    access_ops += [AtrAccessOp.pop() for i in range(100)]
     pass
 
 #c AnalyzerTraceRamDataPathTest_2
@@ -211,9 +145,9 @@ class AnalyzerTraceRamDataPathTest_2(AnalyzerTraceRamDataPathTest_Base):
     Check that if enable_push is deasserted, push does not push
     """
     expected_data = [0 for i in range(100)]
-    access_ops = [AccessOp.clear(0, id=0)]
-    access_ops += [AccessOp.push(i) for i in range(100)]
-    access_ops += [AccessOp.pop() for i in range(100)]
+    access_ops = [AtrAccessOp.clear(0, id=0)]
+    access_ops += [AtrAccessOp.push(i) for i in range(100)]
+    access_ops += [AtrAccessOp.pop() for i in range(100)]
     enable_push = 0
     pass
 
@@ -229,8 +163,8 @@ class AnalyzerTraceRamDataPathTest_3(AnalyzerTraceRamDataPathTest_Base):
         expected_data.append((i+1) | ((i+1)<<16))
         pass
     access_ops = []
-    access_ops += [AccessOp.push(i, width=16) for i in range(100)]
-    access_ops += [AccessOp.pop() for i in range(100)]
+    access_ops += [AtrAccessOp.push(i, width=16) for i in range(100)]
+    access_ops += [AtrAccessOp.pop() for i in range(100)]
     pass
 
 #c AnalyzerTraceRamDataPathTest_4
@@ -247,8 +181,8 @@ class AnalyzerTraceRamDataPathTest_4(AnalyzerTraceRamDataPathTest_Base):
         expected_data.append(i * 0x01010101 + 0x03030303)
         pass
     access_ops = []
-    access_ops += [AccessOp.push(i, width=8) for i in range(100)]
-    access_ops += [AccessOp.pop() for i in range(100)]
+    access_ops += [AtrAccessOp.push(i, width=8) for i in range(100)]
+    access_ops += [AtrAccessOp.pop() for i in range(100)]
     pass
 
 #c AnalyzerTraceRamDataPathTest_5
@@ -261,9 +195,9 @@ class AnalyzerTraceRamDataPathTest_5(AnalyzerTraceRamDataPathTest_Base):
         expected_data.append(1)
         pass
     access_ops = []
-    access_ops += [AccessOp.clear(i, id=0) for i in range(100)]
-    access_ops += [AccessOp.atomic(i, i, t_alu_op.inc32) for i in range(100)]
-    access_ops += [AccessOp.read(i) for i in range(100)]
+    access_ops += [AtrAccessOp.clear(i, id=0) for i in range(100)]
+    access_ops += [AtrAccessOp.atomic(i, i, t_atr_alu_op.inc32) for i in range(100)]
+    access_ops += [AtrAccessOp.read(i) for i in range(100)]
     pass
 
 #c AnalyzerTraceRamDataPathTest_6
@@ -276,9 +210,9 @@ class AnalyzerTraceRamDataPathTest_6(AnalyzerTraceRamDataPathTest_Base):
         expected_data.append(i*4+1)
         pass
     access_ops = []
-    access_ops += [AccessOp.clear(i, id=0) for i in range(100)]
-    access_ops += [AccessOp.atomic(i//2, i, t_alu_op.sum32) for i in range(100)]
-    access_ops += [AccessOp.read(i) for i in range(50)]
+    access_ops += [AtrAccessOp.clear(i, id=0) for i in range(100)]
+    access_ops += [AtrAccessOp.atomic(i//2, i, t_atr_alu_op.sum32) for i in range(100)]
+    access_ops += [AtrAccessOp.read(i) for i in range(50)]
     pass
 
 #c AnalyzerTraceRamDataPathTest_7
@@ -291,9 +225,9 @@ class AnalyzerTraceRamDataPathTest_7(AnalyzerTraceRamDataPathTest_Base):
         expected_data.append((i*4+1) + 0x20000)
         pass
     access_ops = []
-    access_ops += [AccessOp.clear(i, id=0) for i in range(100)]
-    access_ops += [AccessOp.atomic(i//2, i, t_alu_op.inc16_add16) for i in range(100)]
-    access_ops += [AccessOp.read(i) for i in range(50)]
+    access_ops += [AtrAccessOp.clear(i, id=0) for i in range(100)]
+    access_ops += [AtrAccessOp.atomic(i//2, i, t_atr_alu_op.inc16_add16) for i in range(100)]
+    access_ops += [AtrAccessOp.read(i) for i in range(50)]
     pass
 
 #c AnalyzerTraceRamDataPathTest_8
@@ -307,10 +241,10 @@ class AnalyzerTraceRamDataPathTest_8(AnalyzerTraceRamDataPathTest_Base):
         expected_data.append(min(min(max(datav(i), datav(i+50)), datav(i+100)), datav(i+150)))
         pass
     access_ops = []
-    access_ops += [AccessOp.clear(i, id=0) for i in range(100)]
-    access_ops += [AccessOp.atomic(i%50, datav(i), t_alu_op.max32) for i in range(100)]
-    access_ops += [AccessOp.atomic(i%50, datav(i+100), t_alu_op.min32) for i in range(100)]
-    access_ops += [AccessOp.read(i) for i in range(50)]
+    access_ops += [AtrAccessOp.clear(i, id=0) for i in range(100)]
+    access_ops += [AtrAccessOp.atomic(i%50, datav(i), t_atr_alu_op.max32) for i in range(100)]
+    access_ops += [AtrAccessOp.atomic(i%50, datav(i+100), t_atr_alu_op.min32) for i in range(100)]
+    access_ops += [AtrAccessOp.read(i) for i in range(50)]
     pass
 
 #c AnalyzerTraceRamDataPathTest_9
@@ -325,9 +259,9 @@ class AnalyzerTraceRamDataPathTest_9(AnalyzerTraceRamDataPathTest_Base):
         expected_data.append((m1<<16)|m0)
         pass
     access_ops = []
-    access_ops += [AccessOp.write(i, 0x0000ffff) for i in range(50)]
-    access_ops += [AccessOp.atomic(i%50, datav(i), t_alu_op.min_max16) for i in range(100)]
-    access_ops += [AccessOp.read(i) for i in range(50)]
+    access_ops += [AtrAccessOp.write(i, 0x0000ffff) for i in range(50)]
+    access_ops += [AtrAccessOp.atomic(i%50, datav(i), t_atr_alu_op.min_max16) for i in range(100)]
+    access_ops += [AtrAccessOp.read(i) for i in range(50)]
     pass
 
 #c AnalyzerTraceRamDataPathTest_10
@@ -340,12 +274,12 @@ class AnalyzerTraceRamDataPathTest_10(AnalyzerTraceRamDataPathTest_Base):
     expected_data += [i for i in range(2)]    
     expected_data += [5000,5001,2,3,4]    
     access_ops = []
-    access_ops += [AccessOp.pop(id=0) for i in range(10)]
-    access_ops += [AccessOp.push(i) for i in range(2100)]
-    access_ops += [AccessOp.read(i) for i in range(10)]
-    access_ops += [AccessOp.pop() for i in range(2)]
-    access_ops += [AccessOp.push(i+5000) for i in range(5)]
-    access_ops += [AccessOp.read(i) for i in range(5)]
+    access_ops += [AtrAccessOp.pop(id=0) for i in range(10)]
+    access_ops += [AtrAccessOp.push(i) for i in range(2100)]
+    access_ops += [AtrAccessOp.read(i) for i in range(10)]
+    access_ops += [AtrAccessOp.pop() for i in range(2)]
+    access_ops += [AtrAccessOp.push(i+5000) for i in range(5)]
+    access_ops += [AtrAccessOp.read(i) for i in range(5)]
     pass
 
 #c AnalyzerTraceRamDataPathTest_11
@@ -364,12 +298,12 @@ class AnalyzerTraceRamDataPathTest_11(AnalyzerTraceRamDataPathTest_Base):
     # Journal 5 more to mem[5..] (write_ptr is 10 so that is unaffected)
     expected_data += [2048, 2049, 2050, 2051, 2052, 5000, 5001, 5002, 5003, 5004, 10]
     access_ops = []
-    access_ops += [AccessOp.pop(id=0) for i in range(10)]
-    access_ops += [AccessOp.push(i) for i in range(2053)]
-    access_ops += [AccessOp.read(i) for i in range(10)]
-    access_ops += [AccessOp.pop() for i in range(2)]
-    access_ops += [AccessOp.push(i+5000) for i in range(5)]
-    access_ops += [AccessOp.read(i) for i in range(11)]
+    access_ops += [AtrAccessOp.pop(id=0) for i in range(10)]
+    access_ops += [AtrAccessOp.push(i) for i in range(2053)]
+    access_ops += [AtrAccessOp.read(i) for i in range(10)]
+    access_ops += [AtrAccessOp.pop() for i in range(2)]
+    access_ops += [AtrAccessOp.push(i+5000) for i in range(5)]
+    access_ops += [AtrAccessOp.read(i) for i in range(11)]
     pass
 
 #c AnalyzerTraceRamDataPathTest_12
@@ -390,9 +324,9 @@ class AnalyzerTraceRamDataPathTest_12(AnalyzerTraceRamDataPathTest_Base):
                      0x0,
                      ]
     access_ops = []
-    access_ops += [AccessOp.clear(i, id=0) for i in range(10)]
+    access_ops += [AtrAccessOp.clear(i, id=0) for i in range(10)]
     access_ops += [
-        AccessOp.atomic(i, (i+1)<<(8*n), t_alu_op.sum32)
+        AtrAccessOp.atomic(i, (i+1)<<(8*n), t_atr_alu_op.sum32)
         for (i,n) in [(0,0),
                       (1,0),
                       (1,1),
@@ -433,20 +367,20 @@ class AnalyzerTraceRamDataPathTest_12(AnalyzerTraceRamDataPathTest_Base):
                       (8,3),
         ]
         ]
-    access_ops += [AccessOp.read(i) for i in range(10)]
+    access_ops += [AtrAccessOp.read(i) for i in range(10)]
     pass
 
 #a Hardware and test instantiation
-#c AnalyzerTraceRamDataPathHardwarew
+#c AnalyzerTraceRamDataPathHardware
 class AnalyzerTraceRamDataPathHardware(HardwareThDut):
     clock_desc = [("clk",(0,2,2)),
     ]
     reset_desc = {"name":"reset_n", "init_value":0, "wait":5}
     module_name = "analyzer_trace_ram_data_path"
-    dut_inputs  = {"access_req":t_access_combs,
+    dut_inputs  = {"access_req":t_analyzer_trace_access_req,
                    "trace_cfg_fifo":t_analyzer_trace_cfg_fifo,
     }
-    dut_outputs = {"access_resp":t_access_resp,
+    dut_outputs = {"access_resp":t_analyzer_trace_access_resp,
                    "fifo_status":t_fifo_status,
     }
     loggers = { }

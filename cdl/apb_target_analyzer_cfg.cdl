@@ -54,6 +54,8 @@ typedef enum [4] {
     apb_trigger_set_1    = 9, // 24 - map 4-bit bundle of matches to one of 8 sets-of-actions
     apb_trigger_actions_0       = 10, // 4 * 6 - four sets-of-actions
     apb_trigger_actions_1       = 11, // 4 * 6 - four sets-of-actions
+    apb_trigger_data_source     = 12,
+    apb_trigger_trace_ops       = 13,
 } t_apb_trigger_ofs;
 
 /*t t_apb_address_filter
@@ -343,6 +345,18 @@ synthesize out the unused configuration flops.
             apb_state.trigger_cfg.actions_7.record_time        <= apb_state.write_data[26];
             apb_state.trigger_cfg.actions_7.record_invalidate  <= apb_state.write_data[27];
             apb_state.trigger_cfg.actions_7.capture_data       <= apb_state.write_data[2; 28];
+        }
+        case apb_trigger_data_source : {
+            apb_state.trigger_cfg.trace_data_source_0 <= apb_state.write_data[3; 0];
+            apb_state.trigger_cfg.trace_data_source_1 <= apb_state.write_data[3; 8];
+            apb_state.trigger_cfg.trace_data_source_2 <= apb_state.write_data[3;16];
+            apb_state.trigger_cfg.trace_data_source_3 <= apb_state.write_data[3;24];
+        }
+        case apb_trigger_trace_ops : {
+            apb_state.trigger_cfg.trace_op_0 <= apb_state.write_data[3;0];
+            apb_state.trigger_cfg.trace_op_1 <= apb_state.write_data[3;8];
+            apb_state.trigger_cfg.trace_op_2 <= apb_state.write_data[3;16];
+            apb_state.trigger_cfg.trace_op_3 <= apb_state.write_data[3;24];
         }
         default: {
             apb_state.trigger_cfg <= apb_state.trigger_cfg;

@@ -92,8 +92,8 @@ module analyzer_trace_ram( clock clk,
                            output t_fifo_status fifo_status_l,
                            output t_fifo_status fifo_status_h,
 
-                           input t_analyzer_trace_req trace_req,
-                           output t_analyzer_trace_resp trace_resp,
+                           input t_analyzer_trace_access_req trace_access_req,
+                           output t_analyzer_trace_access_resp trace_access_resp,
 
                            input  t_analyzer_trace_cfg trace_cfg
  )
@@ -264,7 +264,7 @@ c. 32-bit values
     /*b Trace response
      */
     trace_response "Trace response": {
-        trace_resp = {*=0};
+        trace_access_resp = {*=0};
     }
     
     /*b Done

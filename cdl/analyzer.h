@@ -114,6 +114,80 @@ typedef struct {
     bit[2] timer_div;
 } t_analyzer_trace_cfg;
 
+/*a Types for analyzer trace */
+/*t t_atr_alu_op
+ */
+typedef enum[4] {
+    atr_alu_op_clear,
+    atr_alu_op_write8,
+    atr_alu_op_write16,
+    atr_alu_op_write32,
+    atr_alu_op_inc32,
+    atr_alu_op_sum32,
+    atr_alu_op_min32,
+    atr_alu_op_max32,
+    atr_alu_op_min_max16,
+    atr_alu_op_inc16_add16
+} t_atr_alu_op;
+
+/*t t_analyzer_trace_address_op
+ */
+typedef enum[3] {
+    atr_address_op_access,
+    atr_address_op_reset_ptrs,
+    atr_address_op_push,
+    atr_address_op_pop,
+} t_analyzer_trace_address_op;
+
+/*t t_analyzer_trace_access_resp
+ */
+typedef struct
+{
+    bit            valid;
+    bit[2]         id;
+    bit[32]        data;
+} t_analyzer_trace_access_resp;
+
+/*t t_analyzer_trace_access_req
+ */
+typedef struct
+{
+    bit            read_enable;
+    bit            write_enable;
+    bit[2]         id;
+    t_analyzer_trace_address_op   address_op;
+    bit[32]        op_data;
+    bit[16]        word_address;
+    t_atr_alu_op   alu_op;
+    bit[2]         byte_of_sram;
+} t_analyzer_trace_access_req;
+
+/*t t_analyzer_trace_data_op
+ */
+typedef enum[3] {
+    atr_data_op_push,
+    atr_data_op_write,
+    atr_data_op_inc,
+    atr_data_op_sum,
+    atr_data_op_min,
+    atr_data_op_max,
+    atr_data_op_min_max,
+    atr_data_op_inc_add
+} t_analyzer_trace_data_op;
+
+/*t t_analyzer_trace_op4
+ *
+ * Currently just a capture bit for each 'port'
+ *
+ */
+typedef struct {
+    bit[4] op_valid;
+    t_analyzer_trace_data_op op_0;
+    t_analyzer_trace_data_op op_1;
+    t_analyzer_trace_data_op op_2;
+    t_analyzer_trace_data_op op_3;
+} t_analyzer_trace_op4;
+
 /*a Types for analyzer trigger */
 /*t t_analyzer_trigger_timer
  */
@@ -169,16 +243,15 @@ typedef enum[3] {
 } t_analyzer_trigger_cfg_match_data_src;
 
 
-/*t t_analyzer_trigger_cfg_data_source
+/*t t_analyzer_trigger_cfg_trace_data_source
  */
 typedef enum[3] {
-    atc_data_source_timer,
-    atc_data_source_timer_delta,
-    atc_data_source_din_0,
-    atc_data_source_rd_0,
-    atc_data_source_din_1,
-    atc_data_source_rd_1
-} t_analyzer_trigger_cfg_data_source;
+    atc_trace_data_source_timer,
+    atc_trace_data_source_timer_delta,
+    atc_trace_data_source_rd,
+    atc_trace_data_source_din_0,
+    atc_trace_data_source_din_1,
+} t_analyzer_trigger_cfg_trace_data_source;
 
 /*t t_analyzer_trigger_cfg
  */
@@ -205,45 +278,13 @@ typedef struct {
     t_analyzer_trigger_cfg_actions actions_5 "Actions used based on action_set";
     t_analyzer_trigger_cfg_actions actions_6 "Actions used based on action_set";
     t_analyzer_trigger_cfg_actions actions_7 "Actions used based on action_set";
-    t_analyzer_trigger_cfg_data_source data_source_0;
-    t_analyzer_trigger_cfg_data_source data_source_1;
+    t_analyzer_trigger_cfg_trace_data_source trace_data_source_0;
+    t_analyzer_trigger_cfg_trace_data_source trace_data_source_1;
+    t_analyzer_trigger_cfg_trace_data_source trace_data_source_2;
+    t_analyzer_trigger_cfg_trace_data_source trace_data_source_3;
+    t_analyzer_trace_data_op trace_op_0;
+    t_analyzer_trace_data_op trace_op_1;
+    t_analyzer_trace_data_op trace_op_2;
+    t_analyzer_trace_data_op trace_op_3;
 } t_analyzer_trigger_cfg;
-
-/*t t_analyzer_trace_data_op
- */
-typedef enum[3] {
-    alu_op_push,
-    alu_op_write,
-    alu_op_inc,
-    alu_op_sum,
-    alu_op_min,
-    alu_op_max,
-    alu_op_min_max,
-    alu_op_inc_add
-} t_analyzer_trace_data_op;
-
-/*t t_analyzer_trace_op4
- *
- * Currently just a capture bit for each 'port'
- *
- */
-typedef struct {
-    bit[4] op_valid;
-    t_analyzer_trace_data_op op0;
-    t_analyzer_trace_data_op op1;
-    t_analyzer_trace_data_op op2;
-    t_analyzer_trace_data_op op3;
-} t_analyzer_trace_op4;
-
-/*t t_analyzer_trace_req
- */
-typedef struct {
-    t_analyzer_trace_data_op op3;
-} t_analyzer_trace_req;
-
-/*t t_analyzer_trace_resp
- */
-typedef struct {
-    bit x;
-} t_analyzer_trace_resp;
 
