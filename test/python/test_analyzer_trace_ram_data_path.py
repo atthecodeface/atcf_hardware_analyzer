@@ -468,6 +468,6 @@ class TestAnalyzerTraceRamDataPath(TestCase):
               "10": (AnalyzerTraceRamDataPathTest_10, 10*1000, {}),              
               "11": (AnalyzerTraceRamDataPathTest_11, 10*1000, {}),              
               "12": (AnalyzerTraceRamDataPathTest_12, 2*1000, {}),              
-              "smoke": (AnalyzerTraceRamDataPathTest_12, 2*1000, {}),              
+              "smoke": (AnalyzerTraceRamDataPathTest_0, 2*1000, {}),              
     }
 

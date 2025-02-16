@@ -196,8 +196,8 @@ c. 32-bit values
     net t_vdata_32 p2_data_value_1;
     net t_vdata_32 p2_data_ofs;
     
-    comb t_access_combs[2] access_combs;
-    net t_access_resp[2] access_resp;
+    comb t_analyzer_trace_access_req[2] access_combs;
+    net t_analyzer_trace_access_resp[2] access_resp;
     
     net t_fifo_status fifo_status_l;
     net t_fifo_status fifo_status_h;
