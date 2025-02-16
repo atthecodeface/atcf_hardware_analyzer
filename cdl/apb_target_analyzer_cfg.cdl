@@ -229,6 +229,19 @@ synthesize out the unused configuration flops.
         }
         }
 
+        apb_combs.filter_read_data = 0;
+        if (!(apb_reads&1)) {
+            apb_combs.filter_read_data = 0;
+        }
+        if (apb_state.access != access_write_filter) {
+            apb_state.filter_cfg <= apb_state.filter_cfg;
+        }
+    }
+
+    /*b Trigger config
+     */
+    trigger_config_logic "Trigget configuration logic": {
+
         full_switch (apb_state.ofs) {
         case apb_trigger_base: {
             apb_state.trigger_cfg.enable <= apb_state.write_data[0];
@@ -272,10 +285,14 @@ synthesize out the unused configuration flops.
             apb_state.trigger_cfg.tb_3.match <= apb_state.write_data[8; 24];
         }
         case apb_trigger_set_0: {
-            apb_state.trigger_cfg.action_set[24; 0] <= apb_state.write_data[24; 0];
+            for (i; 8) {
+                apb_state.trigger_cfg.action_set[3; i*3] <= apb_state.write_data[3; i*4];
+            }
         }
         case apb_trigger_set_1: {
-            apb_state.trigger_cfg.action_set[24; 24] <= apb_state.write_data[24; 0];
+            for (i; 8) {
+                apb_state.trigger_cfg.action_set[3; 24+i*3] <= apb_state.write_data[3; i*4];
+            }
         }
         case apb_trigger_actions_0: {
             apb_state.trigger_cfg.actions_0.halt_capture       <= apb_state.write_data[0];
@@ -331,19 +348,12 @@ synthesize out the unused configuration flops.
             apb_state.trigger_cfg <= apb_state.trigger_cfg;
         }
         }
-        if (apb_state.access != access_write_filter) {
-            apb_state.filter_cfg <= apb_state.filter_cfg;
-        }
         if (apb_state.access != access_write_trigger) {
             apb_state.trigger_cfg <= apb_state.trigger_cfg;
         }
 
         apb_combs.trigger_read_data = 0;
         apb_combs.trace_read_data = 0;
-        apb_combs.filter_read_data = 0;
-        if (!(apb_reads&1)) {
-            apb_combs.filter_read_data = 0;
-        }
         if (!(apb_reads&2)) {
             apb_combs.trigger_read_data = 0;
         }

@@ -228,13 +228,17 @@ typedef enum[3] {
  *
  */
 typedef struct {
-    bit[4] capture;
+    bit[4] op_valid;
+    t_analyzer_trace_data_op op0;
+    t_analyzer_trace_data_op op1;
+    t_analyzer_trace_data_op op2;
+    t_analyzer_trace_data_op op3;
 } t_analyzer_trace_op4;
 
 /*t t_analyzer_trace_req
  */
 typedef struct {
-    bit x;
+    t_analyzer_trace_data_op op3;
 } t_analyzer_trace_req;
 
 /*t t_analyzer_trace_resp

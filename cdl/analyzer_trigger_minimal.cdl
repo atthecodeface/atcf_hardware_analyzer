@@ -145,7 +145,7 @@ The output data can be data in or the timer value
         dout = data[2];
 
         if (trigger_ctl.enable) {
-            trace_op.capture[2;0] = p2_capture_actions.capture_data[2;0];
+            trace_op.op_valid[2;0] = p2_capture_actions.capture_data[2;0];
             dout.valid = 0;
         }
        

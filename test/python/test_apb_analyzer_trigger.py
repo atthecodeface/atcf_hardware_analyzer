@@ -83,6 +83,9 @@ class ApbAnalyzerTest_Base(ThExecFile):
 
         t = TriggerSimple()
         t.byte_match[0].value = 0xff
+        t.action_sets[15] = 1
+        t.actions[1].record_time = True
+        t.actions[1].capture_data = (True, True)
                         
         writes = []
         writes += t.apb_writes(self.apb_map.analyzer_cfg)
