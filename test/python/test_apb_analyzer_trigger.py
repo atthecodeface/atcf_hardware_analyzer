@@ -21,7 +21,7 @@ from regress.apb.bfm     import ApbMaster
 from queue import Queue
 from regress.utils import t_dprintf_req_4, t_dprintf_byte, Dprintf, t_dbg_master_request, t_dbg_master_response, DprintfBus, SramAccessBus, SramAccessRead, SramAccessWrite, DbgMaster, DbgMasterMuxScript, DbgMasterSramScript, DbgMasterFifoScript, FifoStatus, t_sram_access_req, t_sram_access_resp
 from regress.analyzer import t_analyzer_data4, t_analyzer_trace_op4
-from regress.analyzer import TbApbAddressMap, Filter, FilterAcceptAll, FilterChanging
+from regress.analyzer import TbApbAddressMap, Filter, FilterAcceptAll, FilterChanging, TraceCfg
 from regress.analyzer import AnalyzerSrc, TriggerSimple
 
 from cdl.utils   import csr
@@ -36,6 +36,7 @@ class ApbAnalyzerTest_Base(ThExecFile):
     th_name = "Apb target analyzer trigger test harness"
     tgt_mux_sel = 0
     test_filter = Filter((1,0,0,0), (1,0,0,0), None, (12,0,0,0))
+    test_trace = TraceCfg()
     num_data = 50
     src = AnalyzerSrc([1,2,3,4])
     timeout = 300
@@ -106,6 +107,10 @@ class ApbAnalyzerTest_Base(ThExecFile):
             self.apb.reg(r).write(wd)
             pass
 
+        for (r,wd) in self.test_trace.apb_writes(self.apb_map.analyzer_cfg):
+            self.apb.reg(r).write(wd)
+            pass
+
         self.verbose.info("Configure source")
         for (r,wd) in self.src.apb_writes(self.apb_map.analyzer_src):
             self.apb.reg(r).write(wd)
@@ -159,6 +164,7 @@ class ApbAnalyzerTest_Base(ThExecFile):
         self.bfm_wait_until_test_done(100)
         self.die_event.fire()
         self.bfm_wait(10)
+        self.bfm_wait(10000)
         pass
     #f run__finalize
     def run__finalize(self) -> None:
@@ -193,6 +199,6 @@ class ApbAnalyzerHardware(HardwareThDut):
 class TestApbAnalyzer(TestCase):
     hw = ApbAnalyzerHardware
     _tests = {"0": (ApbAnalyzerTest_0, 1*1000, {}),
-              "smoke": (ApbAnalyzerTest_0, 2*1000, {}),
+              "smoke": (ApbAnalyzerTest_0, 80*1000, {}),
     }
 

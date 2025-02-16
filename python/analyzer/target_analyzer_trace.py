@@ -38,14 +38,14 @@ class TraceCfgOffset:
 class TraceCfgFifo:
     data_width = 32
     journal = False
-    fifo_per_ram = False
+    fifo_per_ram = True
     ram_of_fifo = 0
     enable_push = False
     def __init__(self):
         pass
 
     def reg_value(self):
-        value = {32:2, 16:1, 8:0}[self.data_width]
+        value = {32:3, 16:2, 8:1}[self.data_width]
         value += int(self.journal)<<2
         value += int(self.fifo_per_ram)<<3
         value += self.ram_of_fifo<<4
@@ -56,9 +56,11 @@ class TraceCfgFifo:
 #c TraceCfg
 class TraceCfg:
     def __init__(self):
-        self.offset = TraceCfgOffset
-        self.values = (TraceCfgValue, TraceCfgValue)
+        self.offset = TraceCfgOffset()
+        self.values = (TraceCfgValue(), TraceCfgValue())
         self.fifos = (TraceCfgFifo(), TraceCfgFifo())
+        self.fifos[0].enable_push = True
+        self.fifos[1].enable_push = True
         pass
     
     #f apb_writes_control
@@ -69,18 +71,18 @@ class TraceCfg:
     #f apb_writes
     def apb_writes(self, map):
         writes = []
-        fifos = self.fifos[0].reg_value
-        fifos += self.fifos[1].reg_value<<16
+        fifos = self.fifos[0].reg_value()
+        fifos += self.fifos[1].reg_value()<<16
         writes.append( (map.trace_fifos, fifos ) )
         (base, etc) = self.offset.reg_values()
         writes.append( (map.trace_offset_base, base) )
         writes.append( (map.trace_offset_shift_size, etc) )
-        (base, etc) = self.value[0].reg_values()
-        writes.append( (map.trace_value_0__base, base) )
-        writes.append( (map.trace_value_0__shift_size, etc) )
-        (base, etc) = self.value[1].reg_values()
-        writes.append( (map.trace_value_1__base, base) )
-        writes.append( (map.trace_value_1__shift_size, etc) )
+        (base, etc) = self.values[0].reg_values()
+        writes.append( (map.trace_value_0_base, base) )
+        writes.append( (map.trace_value_0_shift_size, etc) )
+        (base, etc) = self.values[1].reg_values()
+        writes.append( (map.trace_value_1_base, base) )
+        writes.append( (map.trace_value_1_shift_size, etc) )
         return writes
 
 #a Trace access classes
