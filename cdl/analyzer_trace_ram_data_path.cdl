@@ -205,7 +205,9 @@ module analyzer_trace_ram_data_path( clock clk,
         }
         case atr_address_op_pop: {
             fifo_combs.pop = fifo_state.not_empty;
-            fifo_state.underflowed <= 1;
+            if (!fifo_state.not_empty) {
+                fifo_state.underflowed <= 1;
+            }
         }
         }
         fifo_combs.nearly_full = fifo_state.num_entries[11;3] == -1;

@@ -142,18 +142,26 @@ class AtrAccessOp:
     def write(cls, address, data, width=32):
         alu_op = {8:t_atr_alu_op.write8, 16:t_atr_alu_op.write16, 32:t_atr_alu_op.write32}[width]
         return cls(address_or_op=address, data=data, alu_op=alu_op, write_enable=1, read_enable=0)
+
+    #f classmethod read
     @classmethod
     def read(cls, address, id=1):
         return cls(id, address_or_op=address, alu_op=t_atr_alu_op.clear, write_enable=0, read_enable=1)
+
+    #f classmethod push
     @classmethod
     def push(cls, data, width=32):
         alu_op = {8:t_atr_alu_op.write8, 16:t_atr_alu_op.write16, 32:t_atr_alu_op.write32}[width]
         read_enable = 0
         if width!=32: read_enable = 1
         return cls(address_or_op=t_atr_address_op.push, data=data, alu_op=alu_op, write_enable=1, read_enable=read_enable)
+
+    #f classmethod pop
     @classmethod
     def pop(cls, id=1):
         return cls(id, address_or_op=t_atr_address_op.pop, alu_op=t_atr_alu_op.clear, write_enable=0, read_enable=1)
+
+    #f classmethod clear
     @classmethod
     def clear(cls, address, id=1):
         read_enable = 0

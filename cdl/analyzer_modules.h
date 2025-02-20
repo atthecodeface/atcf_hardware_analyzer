@@ -191,6 +191,33 @@ extern module apb_target_analyzer_cfg( clock clk,
     timing from rising clock clk filter_cfg, trigger_cfg, trace_cfg;
 }
 
+/*m apb_target_analyzer_trace */
+extern module apb_target_analyzer_trace( clock clk,
+                                         input bit reset_n,
+
+                                         input  t_apb_request  apb_request  "APB request",
+                                         output t_apb_response apb_response "APB response",
+
+                                         input t_fifo_status fifo_status_0,
+                                         input t_fifo_status fifo_status_1,
+                                         input t_fifo_status fifo_status_2,
+                                         input t_fifo_status fifo_status_3,
+
+                                         output t_analyzer_trace_access_req trace_access_req,
+                                         output bit[4] trace_access_valid,
+                                         input t_analyzer_trace_access_resp trace_access_resp,
+                                         input bit trace_access_rdy
+
+    )
+{
+    timing to   rising clock clk apb_request;
+    timing from rising clock clk apb_response;
+
+    timing to rising clock clk fifo_status_0, fifo_status_1, fifo_status_2, fifo_status_3;
+    timing from rising clock clk trace_access_req, trace_access_valid;
+    timing to rising clock clk trace_access_resp, trace_access_rdy;
+}
+
 /*m analyzer_trigger_simple
  */
 extern
@@ -306,7 +333,7 @@ module analyzer_trace_filter( clock clk,
      timing from rising clock clk  dout;
 }
 
-/*m analyzer_trace_data_offset_bound
+/*m analyzer_trace_ram
  */
 extern
 module analyzer_trace_ram( clock clk,
@@ -320,6 +347,8 @@ module analyzer_trace_ram( clock clk,
 
                            input t_analyzer_trace_access_req trace_access_req,
                            output t_analyzer_trace_access_resp trace_access_resp,
+                           input bit[2] trace_access_valid,
+                           output bit trace_access_rdy,
 
                            input  t_analyzer_trace_cfg trace_cfg
  )
@@ -327,8 +356,8 @@ module analyzer_trace_ram( clock clk,
      timing to rising clock clk  trace_op, din;
      timing from rising clock clk  fifo_status_l, fifo_status_h;
 
-     timing to rising clock clk  trace_access_req;
-     timing from rising clock clk  trace_access_resp;
+     timing to rising clock clk  trace_access_req, trace_access_valid;
+     timing from rising clock clk  trace_access_resp, trace_access_rdy;
 
      timing to rising clock clk  trace_cfg;
 }

@@ -88,12 +88,12 @@ class TriggerTraceOpCsr(Csr):
               24:  CsrField(width=3, name="trace_op_3", brief="op3", doc="Trace op for capture 3"),
               }
 
-#c Trace map
-class TraceConfigCsr(Csr):
+#c Trace config map
+class TraceCfgCsr(Csr):
     _fields = {0:  CsrField(width=1, name="enable", brief="en", doc="Enable trace"),
               }
 
-class TraceFifosCsr(Csr):
+class TraceCfgFifosCsr(Csr):
     _fields = {0:  CsrField(width=2, name="fifo_0_width", brief="width0", doc="Trace op for capture 0"),
                2:  CsrField(width=1, name="fifo_0_journal", brief="journal0", doc="Trace op for capture 1"),
                3:  CsrField(width=1, name="fifo_0_fifo_per_ram", brief="fpr0", doc="Trace op for capture 2"),
@@ -106,19 +106,19 @@ class TraceFifosCsr(Csr):
                23:  CsrField(width=1, name="fifo1_enable_push", brief="push1", doc="Trace op for capture 3"),
               }
 
-class TraceBaseCsr(Csr):
+class TraceCfgBaseCsr(Csr):
     _fields = {0:  CsrField(width=24, name="base", brief="base", doc="Base value"),
               }
 
-class TraceValueShiftSizeCsr(Csr):
+class TraceCfgValueShiftSizeCsr(Csr):
     _fields = {0:  CsrField(width=24, name="base", brief="base", doc="Base value"),
               }
 
-class TraceOffsetShiftSizeCsr(Csr):
+class TraceCfgOffsetShiftSizeCsr(Csr):
     _fields = {0:  CsrField(width=24, name="base", brief="base", doc="Base value"),
               }
 
-#c Address map
+#c AnalyzerCfg Address map
 class AnalyzerCfgAddressMap(Map):
     _map = [ MapCsr(reg=0, name="filter_base", brief="fbase", csr=FilterBaseCsr, doc=""),
              MapCsr(reg=8, name="filter_mask0", brief="fmask0", csr=FilterMaskCsr, doc=""),
@@ -143,14 +143,14 @@ class AnalyzerCfgAddressMap(Map):
              MapCsr(reg=28, name="trace_data_source", brief="tds", csr=TriggerTraceSourceCsr, doc="trace data source capture"),
              MapCsr(reg=29, name="trace_op", brief="tds", csr=TriggerTraceOpCsr, doc="trace operations"),
 
-             MapCsr(reg=32, name="trace_cfg", brief="tcfg", csr=TraceConfigCsr, doc="trace config"),
-             MapCsr(reg=33, name="trace_fifos", brief="tfifo", csr=TraceFifosCsr, doc="trace fifos"),
-             MapCsr(reg=34, name="trace_offset_base", brief="tob", csr=TraceBaseCsr, doc="trace offset base"),
-             MapCsr(reg=35, name="trace_offset_shift_size", brief="toss", csr=TraceOffsetShiftSizeCsr, doc="trace offset shift size"),
-             MapCsr(reg=36, name="trace_value_0_base", brief="tvb0", csr=TraceBaseCsr, doc="trace value 0 base"),
-             MapCsr(reg=35, name="trace_value_0_shift_size", brief="tvs0", csr=TraceValueShiftSizeCsr, doc="trace value shift size"),
-             MapCsr(reg=38, name="trace_value_1_base", brief="tvb1", csr=TraceBaseCsr, doc="trace value 1 base"),
-             MapCsr(reg=37, name="trace_value_1_shift_size", brief="tvs1", csr=TraceValueShiftSizeCsr, doc="trace value shift size"),
+             MapCsr(reg=32, name="trace_cfg", brief="tcfg", csr=TraceCfgCsr, doc="trace config"),
+             MapCsr(reg=33, name="trace_fifos", brief="tfifo", csr=TraceCfgFifosCsr, doc="trace fifos"),
+             MapCsr(reg=34, name="trace_offset_base", brief="tob", csr=TraceCfgBaseCsr, doc="trace offset base"),
+             MapCsr(reg=35, name="trace_offset_shift_size", brief="toss", csr=TraceCfgOffsetShiftSizeCsr, doc="trace offset shift size"),
+             MapCsr(reg=36, name="trace_value_0_base", brief="tvb0", csr=TraceCfgBaseCsr, doc="trace value 0 base"),
+             MapCsr(reg=35, name="trace_value_0_shift_size", brief="tvs0", csr=TraceCfgValueShiftSizeCsr, doc="trace value shift size"),
+             MapCsr(reg=38, name="trace_value_1_base", brief="tvb1", csr=TraceCfgBaseCsr, doc="trace value 1 base"),
+             MapCsr(reg=37, name="trace_value_1_shift_size", brief="tvs1", csr=TraceCfgValueShiftSizeCsr, doc="trace value shift size"),
              ]
              
 #a CSRs for TbSrc
@@ -172,7 +172,23 @@ class TbAnalyzerSrcAddressMap(Map):
              MapCsr(reg=7, name="data3", brief="d3", csr=TbSrcDataCsr, doc=""),
              ]
              
-#c TbApbAddressMap
+#a CSRs for Trace access
+class TraceAccCsr(Csr):
+    _fields = {0:  CsrField(width=32, name="data", brief="data", doc="32-bit data value"),
+              }
+#c TraceAccessAddressMap
+class AnalyzerTraceAccessAddressMap(Map):
+    _map = [ MapCsr(reg=0, name="address", brief="add", csr=TraceAccCsr, doc="address"),
+             MapCsr(reg=1, name="data", brief="add", csr=TraceAccCsr, doc="address"),
+             MapCsr(reg=2, name="alu_op", brief="add", csr=TraceAccCsr, doc="address"),
+             MapCsr(reg=3, name="resp_data", brief="add", csr=TraceAccCsr, doc="address"),
+             MapCsr(reg=4, name="pop_fifo_0", brief="pop0", csr=TraceAccCsr, doc="Pop fifo 0"),
+             MapCsr(reg=8, name="fifo_status_0", brief="fifo0", csr=TraceAccCsr, doc="Fifo status"),
+             MapCsr(reg=9, name="fifo_status_1", brief="fifo1", csr=TraceAccCsr, doc="Fifo status"),
+             MapCsr(reg=10, name="fifo_status_2", brief="fifo2", csr=TraceAccCsr, doc="Fifo status"),
+             MapCsr(reg=11, name="fifo_status_3", brief="fifo3", csr=TraceAccCsr, doc="Fifo status"),
+             ]
+#a TbApbAddressMap
 class TbApbAddressMap(Map):
     _width=32
     _select=0
@@ -181,7 +197,9 @@ class TbApbAddressMap(Map):
     _address_size=0
     _map=[MapMap(offset=0x000, name="analyzer_cfg", map=AnalyzerCfgAddressMap),
           MapMap(offset=0x400, name="analyzer_ctl", map=AnalyzerCtlAddressMap),
+          MapMap(offset=0x800, name="analyzer_trace", map=AnalyzerTraceAccessAddressMap),
           MapMap(offset=0xc00, name="analyzer_src", map=TbAnalyzerSrcAddressMap),
          ]
     pass
 
+             

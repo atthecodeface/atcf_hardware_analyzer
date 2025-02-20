@@ -93,6 +93,7 @@ module analyzer_trace_ram( clock clk,
                            output t_fifo_status fifo_status_h,
 
                            input t_analyzer_trace_access_req trace_access_req,
+                           input bit[2] trace_access_valid,
                            output bit trace_access_rdy,
                            output t_analyzer_trace_access_resp trace_access_resp,
 
@@ -226,45 +227,95 @@ c. 32-bit values
         }
         trace_access_rdy = !p2_data_valid;
 
+        // Set things up for a basic op
         for (i; 2) {
-            access_combs[i] = {*=0};
+            access_combs[i].id = 0;
+            access_combs[i].alu_op = atr_alu_op_write32;
+            access_combs[i].read_enable = 1;
+            access_combs[i].write_enable = 1;
+            access_combs[i].address_op = atr_address_op_access;
+            access_combs[i].word_address[12;0] = p2_data_ofs.data[12;0];
+            access_combs[i].byte_of_sram = 0;
         }
-        if (p2_data_valid) {
-            access_combs[0].read_enable = 1; // could be zero if push of 32
-            access_combs[0].write_enable = 1;
-            access_combs[0].address_op = atr_address_op_access;
-            access_combs[0].op_data = p2_data_value_0.data;
-            access_combs[0].word_address[12;0] = p2_data_ofs.data[12;0];
-            full_switch (p2_trace_op.op_0) {
-            case atr_data_op_push: {
-                access_combs[0].address_op = atr_address_op_push;
-                access_combs[0].alu_op = atr_alu_op_write32; // 8 or 16
+        access_combs[0].op_data = p2_data_value_0.data;
+        access_combs[1].op_data = p2_data_value_1.data;
+
+        full_switch (p2_trace_op.op_0) {
+        case atr_data_op_push: {
+            access_combs[0].read_enable = trace_cfg.fifo_0.data_width!=3;
+            access_combs[0].address_op = atr_address_op_push;
+            access_combs[0].alu_op = atr_alu_op_write32; // 8 or 16
+        }
+        case atr_data_op_write: {
+            access_combs[0].alu_op = atr_alu_op_write32; // 8 or 16
+        }
+        case atr_data_op_inc: {
+            access_combs[0].alu_op = atr_alu_op_inc32;
+        }
+        case atr_data_op_sum: {
+            access_combs[0].alu_op = atr_alu_op_sum32;
+        }
+        case atr_data_op_min: {
+            access_combs[0].alu_op = atr_alu_op_min32;
+        }
+        case atr_data_op_max: {
+            access_combs[0].alu_op = atr_alu_op_max32;
+        }
+        case atr_data_op_min_max: {
+            access_combs[0].alu_op = atr_alu_op_min_max16;
+        }
+        case atr_data_op_inc_add: {
+            access_combs[0].alu_op = atr_alu_op_inc16_add16;
+        }
+        }
+
+        access_combs[1].op_data = p2_data_value_1.data;
+        full_switch (p2_trace_op.op_1) {
+        case atr_data_op_push: {
+            access_combs[1].read_enable = trace_cfg.fifo_1.data_width!=3;
+            access_combs[1].address_op = atr_address_op_push;
+            access_combs[1].alu_op = atr_alu_op_write32; // 8 or 16
+        }
+        case atr_data_op_write: {
+            access_combs[1].alu_op = atr_alu_op_write32; // 8 or 16
+        }
+        case atr_data_op_inc: {
+            access_combs[1].alu_op = atr_alu_op_inc32;
+        }
+        case atr_data_op_sum: {
+            access_combs[1].alu_op = atr_alu_op_sum32;
+        }
+        case atr_data_op_min: {
+            access_combs[1].alu_op = atr_alu_op_min32;
+        }
+        case atr_data_op_max: {
+            access_combs[1].alu_op = atr_alu_op_max32;
+        }
+        case atr_data_op_min_max: {
+            access_combs[1].alu_op = atr_alu_op_min_max16;
+        }
+        case atr_data_op_inc_add: {
+            access_combs[1].alu_op = atr_alu_op_inc16_add16;
+        }
+        }
+
+        for (i; 2) {
+            if (!p2_data_valid || !p2_trace_op.op_valid[i]) {
+                access_combs[i].read_enable = 0;
+                access_combs[i].write_enable = 0;
+                access_combs[i].address_op = atr_address_op_access;
             }
-            case atr_data_op_write: {
-                access_combs[0].alu_op = atr_alu_op_write32; // 8 or 16
-            }
-            case atr_data_op_inc: {
-                access_combs[0].alu_op = atr_alu_op_inc32;
-            }
-            case atr_data_op_sum: {
-                access_combs[0].alu_op = atr_alu_op_sum32;
-            }
-            case atr_data_op_min: {
-                access_combs[0].alu_op = atr_alu_op_min32;
-            }
-            case atr_data_op_max: {
-                access_combs[0].alu_op = atr_alu_op_max32;
-            }
-            case atr_data_op_min_max: {
-                access_combs[0].alu_op = atr_alu_op_min_max16;
-            }
-            case atr_data_op_inc_add: {
-                access_combs[0].alu_op = atr_alu_op_inc16_add16;
-            }
-            }
-            if (!p2_trace_op.op_valid[0]) {
-                access_combs[0].read_enable = 0;
-                access_combs[0].write_enable = 0;
+        }
+
+        if (trace_access_rdy) {
+            access_combs[0] = trace_access_req;
+            access_combs[1] = trace_access_req;
+            for (i; 2) {
+                if (!trace_access_valid[i]) {
+                    access_combs[i].read_enable = 0;
+                    access_combs[i].write_enable = 0;
+                    access_combs[i].address_op = atr_address_op_access;
+                }
             }
         }
     }
@@ -273,8 +324,8 @@ c. 32-bit values
      */
     data_value_path "Initial data value path": {
 
-        p0_data_0 = {valid = p0_data.valid, data=p0_data.data_0};
-        p0_data_1 = {valid = p0_data.valid, data=p0_data.data_1};
+        p0_data_0 = {valid = din.valid, data=din.data_0};
+        p0_data_1 = {valid = din.valid, data=din.data_1};
 
         analyzer_trace_data_value_bound bnd0( clk <- clk,
                                               reset_n <= reset_n,
@@ -325,7 +376,10 @@ c. 32-bit values
     /*b Trace response
      */
     trace_response "Trace response": {
-        trace_access_resp = {*=0};
+        trace_access_resp = access_resp[0];
+        if (access_resp[1].valid && !access_resp[0].valid) {
+            trace_access_resp = access_resp[1];
+        }
     }
     
     /*b Done

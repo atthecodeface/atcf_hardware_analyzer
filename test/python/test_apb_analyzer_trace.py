@@ -35,9 +35,11 @@ class ApbAnalyzerTest_Base(ThExecFile):
     
     th_name = "Apb target analyzer trigger test harness"
     tgt_mux_sel = 0
-    src = AnalyzerSrc([1,2,3,4])
-    test_filter = Filter((1,0,0,0), (1,0,0,0), None, (12,0,0,0))
+    test_filter = Filter((1,0,0,0), (1,0,0,0), None, None)
     test_trace = TraceCfg()
+    num_triggers = 50
+    src = AnalyzerSrc([1,2,3,4])
+    timeout = 300
     trigger = TriggerSimple(
         data_srcs = ("d0", "d1"),
         trace_data_srcs=["d0", "d1"],
@@ -47,19 +49,19 @@ class ApbAnalyzerTest_Base(ThExecFile):
     trigger.action_sets[15] = 1
     trigger.actions[1].record_time = True
     trigger.actions[1].capture_data = (True, True)
-    num_data = 50
-    timeout = 300
 
     #f __init__
     # This can be set at initialization time to reduce the number of explicit test cases
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         pass
+
     #f exec_init
     def exec_init(self) -> None:
         self.die_event         = self.sim_event()
         super().exec_init()
         pass
+
     #f run__init
     def run__init(self) -> None:
         self.verbose.set_level(self.verbose.level_info)
@@ -107,51 +109,40 @@ class ApbAnalyzerTest_Base(ThExecFile):
             self.apb.reg(r).write(wd)
             pass
 
-        self.trigger.reset()
-        expected_data = []
-        while len(expected_data) < self.num_data:
-            d = self.src.next_valid()
-            valid = self.test_filter.apply(d)
-            trace = self.trigger.apply(d, valid)
-            if trace is not None:
-                expected_data.append(trace)
-                pass
-            pass
-
-        trace_data = []
+        triggered_count = 0
         time = 0
-        while len(trace_data) < self.num_data:
+        while triggered_count < self.num_triggers:
             self.bfm_wait(1)
             time += 1
             if time > self.timeout:
-                self.failtest(f"Timeout waiting for trace data {len(trace_data)}")
+                self.failtest(f"Timeout waiting for trigger data {triggered_count}")
                 break
             if self.analyzer_trace_op__op_valid.value() != 0:
-                dout = (self.analyzer_trace_op__op_valid.value(),
-                        self.analyzer_trace_op__op_0.value(),
-                        self.analyzer_trace_op__op_1.value(),
-                        self.analyzer_data_triggered__data_0.value(),
-                        self.analyzer_data_triggered__data_1.value(),
-                        self.analyzer_data_triggered__data_2.value(),
-                        self.analyzer_data_triggered__data_3.value(),
-                        )
-                trace_data.append(dout)
+                triggered_count += 1
                 pass
             pass
 
-        self.verbose.info(f"Check {len(trace_data)} data values")
-        for i in range(len(trace_data)):
-            e = expected_data[i]
-            f = trace_data[i]
-            self.compare_expected(f"Filter out {i} data 0", e[0], f[0])
-            self.compare_expected(f"Filter out {i} data 1", e[1], f[1])
-            self.compare_expected(f"Filter out {i} data 2", e[2], f[2])
-            self.compare_expected(f"Filter out {i} data 3", e[3], f[3])
-            self.compare_expected(f"Filter out {i} data 4", e[4], f[4])
-            self.compare_expected(f"Filter out {i} data 5", e[5], f[5])
-            self.compare_expected(f"Filter out {i} data 6", e[6], f[6])
-            pass
+        self.bfm_wait(10)
         
+        self.verbose.info("Check data out")
+        fs0 = self.apb.reg(self.apb_map.analyzer_trace.fifo_status_0).read()
+        self.verbose.info(f"Read fifo status 0 {fs0} (using as FIFO so not empty)")
+        fs1 = self.apb.reg(self.apb_map.analyzer_trace.fifo_status_1).read()
+        self.verbose.info(f"Read fifo status 1 {fs1} (using as histogram so empty)")
+
+        self.compare_expected("Fifo 0 should be not empty",fs0&1, 0)
+        self.compare_expected("Fifo 1 should be empty",fs1, 1)
+
+        d0 = self.apb.reg(self.apb_map.analyzer_trace.pop0).read()
+        self.compare_expected("Data captured",d0,3)
+
+        d0 = self.apb.reg(self.apb_map.analyzer_trace.pop0).read()
+        self.compare_expected("Data captured",d0,5)
+        d0 = self.apb.reg(self.apb_map.analyzer_trace.pop0).read()
+        self.compare_expected("Data captured",d0,7)
+        d0 = self.apb.reg(self.apb_map.analyzer_trace.pop0).read()
+        self.compare_expected("Data captured",d0,9)
+
         self.verbose.info("Data compared")
         self.bfm_wait_until_test_done(100)
         self.die_event.fire()
