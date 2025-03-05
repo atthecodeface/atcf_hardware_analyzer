@@ -1,23 +1,36 @@
+/*a Includes */
+include "apb::apb.h"
+include "apb::apb_masters.h"
+include "std::srams.h"
 include "utils::fifo_status.h"
-include "apb::apb.h"
-include "apb::apb.h"
-include "analyzer.h"
-include "analyzer_modules.h"
+include "utils::debug.h"
+include "utils::debug_modules.h"
 include "clocking::clock_timer.h"
 include "clocking::clock_timer_modules.h"
-include "tb_analyzer_modules.h"
-module tb_analyzer( clock clk,
-                    input bit reset_n,
-                        
-                    input  t_apb_request  apb_request  "APB request",
-                    output t_apb_response apb_response "APB response",
-                    output t_analyzer_data4 analyzer_data_filtered,
-                    output t_analyzer_trace_op4 analyzer_trace_op,
-                    output t_analyzer_data4 analyzer_data_triggered,
-                    output t_analyzer_data4 analyzer_data4
 
-    )
+include "analyzer.h"
+include "analyzer_modules.h"
+include "tb_analyzer_modules.h"
+
+/*a Module */
+module tb_analyzer_dbg( clock clk,
+                        input bit reset_n,
+
+                        input t_dbg_master_request dbg_master_req,
+                        output t_dbg_master_response dbg_master_resp
+)
 {
+
+    /*b Nets */
+    default clock clk;
+    default reset active_low reset_n;
+    net t_dbg_master_response dbg_master_resp;
+
+    net t_dbg_master_request  dbg_master_req_fifo;
+    net t_dbg_master_request  dbg_master_req_apb;
+    net t_dbg_master_response dbg_master_resp_fifo;
+    net t_dbg_master_response dbg_master_resp_apb;
+
     net t_analyzer_mst analyzer_mst;
     net t_analyzer_tgt analyzer_tgt;
     net t_analyzer_trace_op4 analyzer_trace_op;
@@ -36,44 +49,88 @@ module tb_analyzer( clock clk,
     
     net t_fifo_status[2] trace_fifo_status;
 
-    net t_analyzer_trace_access_req trace_access_req;
+    comb t_analyzer_trace_access_req trace_access_req;
+    comb bit[4] trace_access_valid;
     net t_analyzer_trace_access_resp trace_access_resp;
-    net bit[4] trace_access_valid;
     net bit trace_access_rdy;
+
+    net t_apb_request             apb_request;
+    comb t_apb_response            apb_response;
 
     comb  t_apb_request  apb_request_ctl  "APB request to target ctl";
     comb  t_apb_request  apb_request_cfg  "APB request to target cfg";
     comb  t_apb_request  apb_request_src  "APB request to target src";
-    comb  t_apb_request  apb_request_trace  "APB request to target trace";
     net t_apb_response apb_response_ctl "APB response from target ctl";
     net t_apb_response apb_response_cfg "APB response from target cfg";
     net t_apb_response apb_response_src "APB response from target src";
-    net t_apb_response apb_response_trace "APB response from target trace";
 
-    modules: {
+    comb t_dbg_master_response resp_none;
+    net bit dbg_pop_fifo;
+
+    /*b Instantiations */
+    instantiations: {
         apb_response = {*=0};
         apb_response |= apb_response_cfg;
         apb_response |= apb_response_ctl;
         apb_response |= apb_response_src;
-        apb_response |= apb_response_trace;
 
         apb_response.pready = (apb_response_cfg.pready &
                                apb_response_ctl.pready &
-                               apb_response_src.pready &
-                               apb_response_trace.pready);
+                               apb_response_src.pready);
 
         apb_request_cfg = apb_request;
         apb_request_ctl = apb_request;
         apb_request_src = apb_request;
-        apb_request_trace = apb_request;
         apb_request_cfg.psel = apb_request.psel && (apb_request.paddr[2;10] == 2b00);
         apb_request_ctl.psel = apb_request.psel && (apb_request.paddr[2;10] == 2b01);
-        apb_request_trace.psel = apb_request.psel && (apb_request.paddr[2;10] == 2b10);
         apb_request_src.psel = apb_request.psel && (apb_request.paddr[2;10] == 2b11);
 
-        analyzer_data4 = analyzer_tgt.data;
-
         timer_ctl = {*=0};
+
+        trace_access_req = {*=0};
+        trace_access_req.read_enable = 1;
+        trace_access_req.id = 2b11;
+        trace_access_req.address_op = atr_address_op_pop;
+
+        trace_access_valid = 0;
+        trace_access_valid[0] = dbg_pop_fifo;
+
+        resp_none = {*=0};
+        
+        dbg_master_mux mux( clk <- clk,
+                                 reset_n <= reset_n,
+                                 dbg_master_req <= dbg_master_req,
+                                 dbg_master_resp => dbg_master_resp,
+                                 req1 => dbg_master_req_fifo,
+                                 req2 => dbg_master_req_apb,
+                                 resp0 <= resp_none,
+                                 resp1 <= dbg_master_resp_fifo,
+                                 resp2 <= dbg_master_resp_apb,
+                                 resp3 <= resp_none
+            );
+
+        dbg_master_fifo_sink dut( clk <- clk,
+                                 reset_n <= reset_n,
+                                  dbg_master_req <= dbg_master_req_fifo,
+                                  dbg_master_resp => dbg_master_resp_fifo,
+                                  fifo_status <= trace_fifo_status[0],
+                                  data0 <= bundle(32b0, trace_access_resp.data),
+                                  data1 <= 0,
+                                  data2 <= 0,
+                                  data3 <= 0,
+                                  pop_rdy <= trace_access_rdy,
+                                  data_valid <= trace_access_resp.valid && (trace_access_resp.id==2b11),
+                                  pop_fifo => dbg_pop_fifo
+            );
+
+        apb_script_master apb( clk <- clk,
+                       reset_n <= reset_n,
+
+                       dbg_master_req <= dbg_master_req_apb,
+                       dbg_master_resp => dbg_master_resp_apb,
+                       apb_request => apb_request,
+                       apb_response  <= apb_response );
+
 
         apb_target_analyzer_ctl ctl( clk <- clk,
                                      reset_n <= reset_n,
@@ -90,23 +147,6 @@ module tb_analyzer( clock clk,
                                      filter_cfg => filter_cfg,
                                      trigger_cfg => trigger_cfg,
                                      trace_cfg => trace_cfg );
-
-        apb_target_analyzer_trace apb_trace( clk <- clk,
-                                             reset_n <= reset_n,
-                                             apb_request <= apb_request_trace,
-                                             apb_response => apb_response_trace,
-
-                                             fifo_status_0 <= trace_fifo_status[0],
-                                             fifo_status_1 <= trace_fifo_status[1],
-                                             fifo_status_2 <= trace_fifo_status[0],
-                                             fifo_status_3 <= trace_fifo_status[0],
-
-                                             trace_access_req => trace_access_req,
-                                             trace_access_valid => trace_access_valid,
-                                             trace_access_resp <= trace_access_resp,
-                                             trace_access_rdy <= trace_access_rdy
-            );
-
 
         clock_timer clk_timer( clk<-clk, reset_n<=reset_n,
                                timer_control <= timer_ctl,
@@ -143,5 +183,6 @@ module tb_analyzer( clock clk,
                                    trace_access_resp => trace_access_resp,
 
                                    trace_cfg <= trace_cfg );
+
     }
 }

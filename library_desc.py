@@ -35,7 +35,7 @@ class ApbTargetModules(cdl_desc.Modules):
     name = "apb_target"
     src_dir      = "cdl"
     tb_src_dir   = "tb_cdl"
-    libraries = {"std":True, "apb":True}
+    libraries = {"std":True, "apb":True, "utils":True}
     cdl_include_dirs = ["cdl", "tb_cdl"]
     export_dirs = cdl_include_dirs + [ src_dir ]
     modules = []
@@ -51,6 +51,8 @@ class ApbTargetModules(cdl_desc.Modules):
     modules += [ CdlModule("tb_apb_target_analyzer_src",
                             src_dir=tb_src_dir) ]
     modules += [ CdlModule("tb_analyzer",
+                            src_dir=tb_src_dir) ]
+    modules += [ CdlModule("tb_analyzer_dbg",
                             src_dir=tb_src_dir) ]
     pass
 
