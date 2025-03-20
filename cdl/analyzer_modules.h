@@ -361,3 +361,22 @@ module analyzer_trace_ram( clock clk,
 
      timing to rising clock clk  trace_cfg;
 }
+
+/*m analyzer_simple
+ */
+extern
+module analyzer_simple( clock clk,
+                        input bit reset_n,
+                        
+                        input  t_apb_request  apb_request  "APB request",
+                        output t_apb_response apb_response "APB response", 
+                        output t_analyzer_mst analyzer_mst,
+                        input t_analyzer_tgt analyzer_tgt,
+                        input t_timer_value  timer_value                        
+    )
+{
+    timing to rising clock clk  apb_request;
+    timing from rising clock clk  apb_response;
+    timing from rising clock clk  analyzer_mst;
+    timing to rising clock clk  analyzer_tgt, timer_value;
+}
