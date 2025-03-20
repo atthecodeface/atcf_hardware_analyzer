@@ -195,10 +195,10 @@ class TbApbAddressMap(Map):
     _address=0
     _shift=0
     _address_size=0
-    _map=[MapMap(offset=0x000, name="analyzer_cfg", map=AnalyzerCfgAddressMap),
-          MapMap(offset=0x400, name="analyzer_ctl", map=AnalyzerCtlAddressMap),
-          MapMap(offset=0x800, name="analyzer_trace", map=AnalyzerTraceAccessAddressMap),
-          MapMap(offset=0xc00, name="analyzer_src", map=TbAnalyzerSrcAddressMap),
+    _map=[MapMap(offset=0x00, name="analyzer_cfg", map=AnalyzerCfgAddressMap),
+          MapMap(offset=0x40, name="analyzer_ctl", map=AnalyzerCtlAddressMap),
+          MapMap(offset=0x80, name="analyzer_trace", map=AnalyzerTraceAccessAddressMap),
+          MapMap(offset=0xc0, name="analyzer_src", map=TbAnalyzerSrcAddressMap),
          ]
     pass
 

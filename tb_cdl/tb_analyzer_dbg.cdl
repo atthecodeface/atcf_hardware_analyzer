@@ -81,9 +81,9 @@ module tb_analyzer_dbg( clock clk,
         apb_request_cfg = apb_request;
         apb_request_ctl = apb_request;
         apb_request_src = apb_request;
-        apb_request_cfg.psel = apb_request.psel && (apb_request.paddr[2;10] == 2b00);
-        apb_request_ctl.psel = apb_request.psel && (apb_request.paddr[2;10] == 2b01);
-        apb_request_src.psel = apb_request.psel && (apb_request.paddr[2;10] == 2b11);
+        apb_request_cfg.psel = apb_request.psel && (apb_request.paddr[2;6] == 2b00);
+        apb_request_ctl.psel = apb_request.psel && (apb_request.paddr[2;6] == 2b01);
+        apb_request_src.psel = apb_request.psel && (apb_request.paddr[2;6] == 2b11);
 
         timer_ctl = {*=0};
 
