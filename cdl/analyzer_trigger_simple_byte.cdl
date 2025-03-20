@@ -1,0 +1,128 @@
+/*a Includes
+ */
+include "analyzer.h"
+include "analyzer_trigger.h"
+include "std::valid_data.h"
+
+/*a Types */
+/*t t_match_combs
+ */
+typedef struct
+{
+    bit[8] data_byte;
+    bit[8] selected_bits;
+    bit[8] must_match;
+    bit[8] at_least_one;
+    bit next_matched;
+} t_match_combs;
+
+/*t t_match_state
+ */
+typedef struct
+{
+    bit valid;
+    bit data_match;
+    bit last_data_match;
+} t_match_state;
+
+/*a Module
+ */
+module analyzer_trigger_simple_byte( clock clk,
+                                     input bit reset_n,
+
+                                     input  t_vdata_32 match_data_0,
+                                     input  t_vdata_32 match_data_1,
+                                     output bit matched,
+                                     input  t_analyzer_trigger_cfg_byte trigger_cfg_byte
+ )
+"""
+
+For each trigger of N:
+
+* Select which din
+
+* Select byte of data
+
+* Use TCAM mask/match to get bits that are X/0/1
+
+* Use TCAM mask/match 0/1 to get at least one bit that must be set
+
+* Record result, and if result matches last result
+
+* Output X, changed, matched, !matched, matched & changed, !matched & changed
+
+This has a pipeline delay of two:
+
+* Mux input data to selected byte
+
+* Store stuff
+
+    
+"""
+
+{
+    /*b Default clock and reset
+     */
+    default clock clk;
+    default reset active_low reset_n;
+
+    comb t_match_combs match_combs;
+    clocked t_match_state match_state = {*=0};
+    comb bit[4] bundled_matches;
+    
+    /*b Timer value state
+     */
+    timer_value_logic "Timer value logic": {
+        full_switch (trigger_cfg_byte.byte_sel) {
+        case 0: {
+            match_combs.data_byte = match_data_0.data[8;0];
+        }
+        case 1: {
+            match_combs.data_byte = match_data_0.data[8;8];
+        }
+        case 2: {
+            match_combs.data_byte = match_data_0.data[8;16];
+        }
+        case 3: {
+            match_combs.data_byte = match_data_0.data[8;24];
+        }
+        case 4: {
+            match_combs.data_byte = match_data_1.data[8;0];
+        }
+        case 5: {
+            match_combs.data_byte = match_data_1.data[8;8];
+        }
+        case 6: {
+            match_combs.data_byte = match_data_1.data[8;16];
+        }
+        default: {
+            match_combs.data_byte = match_data_1.data[8;24];
+        }
+        }
+
+        match_combs.must_match    = trigger_cfg_byte.match & trigger_cfg_byte.mask;
+        match_combs.at_least_one  = trigger_cfg_byte.match & ~trigger_cfg_byte.mask;
+        match_combs.selected_bits = trigger_cfg_byte.mask & match_combs.data_byte;
+        match_combs.next_matched = (match_combs.selected_bits == match_combs.must_match);
+        if ((match_combs.at_least_one != 8h0) && ((match_combs.data_byte & match_combs.at_least_one) == 0)) {
+            match_combs.next_matched = 0;
+        }
+
+        match_state.valid <= 0;
+        if (match_data_0.valid || match_data_1.valid || trigger_cfg_byte.ignore_valid) {
+            match_state.data_match <= match_combs.next_matched;
+            match_state.last_data_match <= match_state.data_match;
+            match_state.valid <= 1;
+        }
+
+        bundled_matches = bundle( (match_state.data_match ^ match_state.last_data_match),
+                                  ~match_state.data_match & match_state.last_data_match,
+                                  match_state.data_match & !match_state.last_data_match,
+                                  match_state.data_match
+            );
+        matched = bundled_matches[ trigger_cfg_byte.cond_sel ] & match_state.valid;
+    }
+    
+    /*b Done
+     */
+}

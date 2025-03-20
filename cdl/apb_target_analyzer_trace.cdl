@@ -1,0 +1,263 @@
+/*a Includes
+ */
+include "apb::apb.h"
+include "analyzer.h"
+include "analyzer_modules.h"
+include "std::srams.h"
+
+/*a Constants */
+constant integer apb_reads = 0;
+
+/*a Types */
+/*t t_apb_address
+ * APB address map, used to decode paddr
+ *
+ */
+typedef enum [4] {
+    apb_address_address     = 0,
+    apb_address_data        = 1,
+    apb_address_alu_op      = 2,
+    apb_address_resp_data   = 3,
+    apb_address_pop_fifo_0   = 4,
+    apb_address_fifo_status_0 = 8,
+    apb_address_fifo_status_1 = 9,
+    apb_address_fifo_status_2 = 10,
+    apb_address_fifo_status_3 = 11,
+} t_apb_address_kind;
+
+/*t t_access
+ * APB access that is in progress; a decode of psel and paddr
+ */
+typedef enum [4] {
+    access_none           "No access being performed",
+    access_write_address  "Write data to trigger cfg",
+    access_write_data     "Write data to trace cfg",
+    access_write_alu_op   "Write data to filter cfg",
+    access_read_address   "Read data from trigger cfg",
+    access_pop_fifo       "Pop data from a fifo",
+    access_read_result    "Read data from trace cfg",
+    access_read_status    "Read data from filter cfg",
+    access_read_fifo_0    "Read fifo status 0",
+    access_read_fifo_1    "Read fifo status 1",
+    access_read_fifo_2    "Read fifo status 2",
+    access_read_fifo_3    "Read fifo status 3",
+} t_access;
+
+/*t t_apb_combs */
+typedef struct {
+    t_fifo_status fifo_status;
+} t_apb_combs;
+
+/*t t_apb_state */
+typedef struct {
+    bit access_not_first_cycle "Asserted if not the first cycle of not access_none";
+    t_access access;
+    t_analyzer_trace_access_req req;
+    bit[4] trace_access_valid;
+    bit[32] resp_data;
+    bit[32] fifo_status_prdata;
+    bit op_pending;
+    bit result_pending;
+} t_apb_state;
+
+/*a Module
+ */
+module apb_target_analyzer_trace( clock clk,
+                                  input bit reset_n,
+
+                                  input  t_apb_request  apb_request  "APB request",
+                                  output t_apb_response apb_response "APB response",
+
+                                  input t_fifo_status fifo_status_0,
+                                  input t_fifo_status fifo_status_1,
+                                  input t_fifo_status fifo_status_2,
+                                  input t_fifo_status fifo_status_3,
+
+                                  output t_analyzer_trace_access_req trace_access_req,
+                                  output bit[4] trace_access_valid,
+                                  input t_analyzer_trace_access_resp trace_access_resp,
+                                  input bit trace_access_rdy
+
+    )
+"""
+This module provides trace access for logic analyzers from APB.
+
+                                                                  
+"""
+
+{
+    /*b Default clock and reset
+     */
+    default clock clk;
+    default reset active_low reset_n;
+
+    /*b APB state and combs
+     */
+    clocked t_apb_state apb_state = {*=0};
+    comb t_apb_combs apb_combs;
+
+    /*b APB read
+     */
+    apb_read_logic "APB reads": {
+
+        /*b Handle APB read data - may affect pready */
+        apb_response = {*=0, pready=1};
+        apb_combs.fifo_status = fifo_status_0;
+        part_switch (apb_state.access) {
+        case access_read_address: {
+            apb_response.prdata |= 0; // apb_state.req.address;
+        }
+        case access_read_result: {
+            apb_response.prdata |= apb_state.resp_data;
+        }
+        case access_read_status: {
+            apb_response.prdata |= 0;
+        }
+        case access_pop_fifo: {
+            apb_response.prdata |= apb_state.resp_data;
+            apb_response.pready = apb_state.access_not_first_cycle;
+        }
+        case access_read_fifo_0: {
+            apb_combs.fifo_status = fifo_status_0;
+            apb_response.prdata |= apb_state.fifo_status_prdata;
+            apb_response.pready = apb_state.access_not_first_cycle;
+        }
+        case access_read_fifo_1: {
+            apb_combs.fifo_status = fifo_status_1;
+            apb_response.prdata |= apb_state.fifo_status_prdata;
+            apb_response.pready = apb_state.access_not_first_cycle;
+        }
+        case access_read_fifo_2: {
+            apb_combs.fifo_status = fifo_status_2;
+            apb_response.prdata |= apb_state.fifo_status_prdata;
+            apb_response.pready = apb_state.access_not_first_cycle;
+        }
+        case access_read_fifo_3: {
+            apb_combs.fifo_status = fifo_status_3;
+            apb_response.prdata |= apb_state.fifo_status_prdata;
+            apb_response.pready = apb_state.access_not_first_cycle;
+        }
+        }
+
+        if (apb_state.access != access_none) {
+            apb_state.fifo_status_prdata <= bundle( apb_combs.fifo_status.spaces_available[14;0],
+                                           apb_combs.fifo_status.entries_full[14;0],
+                                           apb_combs.fifo_status.overflowed,
+                                           apb_combs.fifo_status.underflowed,
+                                           apb_combs.fifo_status.full,
+                                           apb_combs.fifo_status.empty );
+        }
+        if (apb_state.op_pending || apb_state.result_pending) {
+            apb_response.pready = 0;
+        }
+    }
+    
+    /*b APB interface state
+     */
+    apb_interface "APB interface": {
+
+        /*b Decode access */
+        apb_state.access <= access_none;
+        part_switch (apb_request.paddr[4;0]) {
+        case apb_address_address: {
+            apb_state.access <= apb_request.pwrite ? access_write_address: access_read_address;
+        }
+        case apb_address_data: {
+            apb_state.access <= apb_request.pwrite ? access_write_data: access_none;
+        }
+        case apb_address_alu_op: {
+            apb_state.access <= apb_request.pwrite ? access_write_alu_op: access_read_status;
+        }
+        case apb_address_resp_data: {
+            apb_state.access <= apb_request.pwrite ? access_none: access_read_result;
+        }
+        case apb_address_pop_fifo_0: {
+            apb_state.access <= apb_request.pwrite ? access_none: access_pop_fifo;
+        }
+        case apb_address_fifo_status_0: {
+            apb_state.access <= apb_request.pwrite ? access_none: access_read_fifo_0;
+        }
+        case apb_address_fifo_status_1: {
+            apb_state.access <= apb_request.pwrite ? access_none: access_read_fifo_1;
+        }
+        case apb_address_fifo_status_2: {
+            apb_state.access <= apb_request.pwrite ? access_none: access_read_fifo_2;
+        }
+        case apb_address_fifo_status_3: {
+            apb_state.access <= apb_request.pwrite ? access_none: access_read_fifo_3;
+        }
+        }
+        if (apb_request.psel) {
+            apb_state.access_not_first_cycle <= apb_request.penable;
+            if (apb_request.penable && apb_response.pready) {
+                apb_state.access_not_first_cycle <= 0;
+            }
+        }
+        if (!apb_request.psel || (apb_request.penable && apb_response.pready)) {
+            apb_state.access <= access_none;
+        }
+    }
+
+    /*b Filter config
+     */
+    filter_config_logic "Filter configuration logic": {
+        /*b Write the configuration */
+        full_switch (apb_state.access) {
+        case access_write_data: {
+            apb_state.req.op_data <= apb_request.pwdata;
+        }
+        case access_write_address: {
+            apb_state.req.word_address <= apb_request.pwdata[16;2];
+            apb_state.req.byte_of_sram <= apb_request.pwdata[2;0];
+        }
+        case access_write_alu_op: {
+            apb_state.req.alu_op <= apb_request.pwdata[4;0];
+            apb_state.req.read_enable <= apb_request.pwdata[4];
+            apb_state.req.write_enable <= apb_request.pwdata[5];
+            apb_state.req.address_op <= apb_request.pwdata[3;8];
+            apb_state.trace_access_valid <= 0;
+            full_switch (apb_request.pwdata[2;16]) {
+            case 2b00: {apb_state.trace_access_valid[0] <= 1;}
+            case 2b01: {apb_state.trace_access_valid[1] <= 1;}
+            case 2b10: {apb_state.trace_access_valid[2] <= 1;}
+            case 2b11: {apb_state.trace_access_valid[3] <= 1;}
+            }
+            if (!apb_state.access_not_first_cycle) {
+                apb_state.op_pending <= 1;
+            }
+        }
+        case access_pop_fifo: {
+            apb_state.req.read_enable <= 1;
+            apb_state.req.write_enable <= 0;
+            apb_state.req.address_op <= atr_address_op_pop;
+            apb_state.trace_access_valid <= 0;
+            apb_state.trace_access_valid[0] <= 1;
+            if (!apb_state.access_not_first_cycle) {
+                apb_state.op_pending <= 1;
+            }
+        }
+        }
+        apb_state.req.id <= 0;
+
+        trace_access_valid = apb_state.trace_access_valid;
+        if (!apb_state.op_pending) {
+            trace_access_valid = 0;
+        }
+        trace_access_req = apb_state.req;
+        trace_access_req.id = 2b10;
+
+        if (trace_access_rdy && apb_state.op_pending) {
+            apb_state.op_pending <= 0;
+            apb_state.result_pending <= 1;
+        }
+        
+        if (trace_access_resp.valid && (trace_access_resp.id==2b10)) {
+            apb_state.resp_data <= trace_access_resp.data;
+            apb_state.result_pending <= 0;
+        }
+    }
+
+
+    /*b Done
+     */
+}

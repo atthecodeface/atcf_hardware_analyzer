@@ -1,0 +1,83 @@
+/*a Includes
+ */
+include "analyzer.h"
+
+/*a Types */
+
+/*a Module
+ */
+module analyzer_trace_data_value_bound( clock clk,
+                                        input bit reset_n,
+                                        input  t_vdata_32  din,
+
+                                        input  t_analyzer_trace_cfg_value trace_cfg,
+
+                                        output t_vdata_32 p2_data_value
+ )
+"""
+This initial data (for each 32-bits) is adjusted using:
+
+ D_value[i] = ((D[i] - cfg.value_base[i]) >> cfg.value_shf[i]) [ & cfg.value_mask[i] or max_min at value_mask]
+
+By max-min - if using max_min and ((D[i] - cfg.value_base[i]) >> cfg.value_shf[i]) is negative (signed shift!) then use 0, and if +ve and any bit of ~value_mask is set then use value_mask
+
+"""
+
+{
+    /*b Default clock and reset
+     */
+    default clock clk;
+    default reset active_low reset_n;
+
+    /*b State and combs */
+    clocked t_vdata_32 p0_data  = {*=0}"Data in registered";
+
+    comb bit[33] p01_data_value "Data in minus base";
+
+    clocked bit p1_data_valid  = {*=0} "Asserted if data is valid";
+    clocked bit[33] p1_data_value  = {*=0} "Data in minus base";
+
+    comb bit     p12_data_is_neg;
+    comb bit[32] p12_data_shf;
+    comb bit[64] p12_data_mask;
+    comb bit[32] p12_data_result;
+    comb bit[32] p12_data_unused;
+
+    clocked t_vdata_32 p2_data_value  = {*=0} ;
+    
+    /*b Data value logic
+     */
+    data_value_path "Derive actual data value": {
+        if (din.valid || p0_data.valid) {
+            p0_data <= din;
+        }
+
+        p01_data_value = bundle(1b0, p0_data.data) - bundle(9b0, trace_cfg.base);
+
+        if (p1_data_valid || p0_data.valid) {
+            p1_data_valid <= p0_data.valid;
+            p1_data_value <= p01_data_value;
+        }
+
+        p12_data_is_neg = p1_data_value[32];
+        p12_data_shf    = p1_data_value[32;0] >> trace_cfg.shift;
+        p12_data_mask   = 64hffff_ffff_0000_0000 >> trace_cfg.mask_size;
+        p12_data_result = p12_data_shf & p12_data_mask[32;32];
+        p12_data_unused = p12_data_shf & ~p12_data_mask[32;32];
+
+        if (trace_cfg.max_min) {
+            if (p12_data_is_neg) {
+                p12_data_result = 0;
+            }
+            elsif (p12_data_unused != 0) {
+                p12_data_result = p12_data_mask[32;32];
+            }
+        }
+
+        if (p1_data_valid || p2_data_value.valid) {
+            p2_data_value.valid <= p1_data_valid;
+            p2_data_value.data <= p12_data_result;
+        }
+
+    }
+}

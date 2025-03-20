@@ -1,0 +1,32 @@
+doc="""
+This repository contains the ATCF analyzer CDL modules.
+
+The logic analyzer
+"""
+[env]
+SRC_ROOT     = "@GRIP_REPO_PATH@"
+BUILD_ROOT   = "@BUILD_DIR@"
+MAKE_OPTIONS = "-f @GRIP_REPO_PATH@/Makefile SRC_ROOT=@SRC_ROOT@ BUILD_ROOT=@BUILD_DIR@"
+
+[clean_sim]
+exec="mkdir -p @BUILD_DIR@ && cd @BUILD_DIR@ && make @MAKE_OPTIONS@ clean"
+
+[build_sim]
+requires=[".clean_sim"]
+wd="@BUILD_DIR@"
+exec="make @MAKE_OPTIONS@ -j8 all"
+
+[smoke_test]
+# Note the global here - this does not depend on *this* build_sim but on the parent GLOBAL build stage
+requires=["build"]
+wd="@GRIP_REPO_PATH@"
+exec="make @MAKE_OPTIONS@ SIM=@BUILD_DIR@/sim smoke"
+action="yes"
+
+[regress]
+# Note the global here - this does not depend on *this* build_sim but on the parent GLOBAL build stage
+requires=["build"]
+wd="@GRIP_REPO_PATH@"
+exec="make @MAKE_OPTIONS@ regress"
+action="yes"
+

@@ -1,0 +1,82 @@
+include "utils::fifo_status.h"
+include "apb::apb.h"
+include "apb::apb.h"
+include "analyzer.h"
+include "analyzer_modules.h"
+include "tb_analyzer_modules.h"
+include "clocking::clock_timer.h"
+include "clocking::clock_timer_modules.h"
+module tb_analyzer_filter( clock clk,
+                        input bit reset_n,
+                        
+                        input  t_apb_request  apb_request  "APB request",
+                        output t_apb_response apb_response "APB response",
+                           output t_analyzer_data4 analyzer_data4,
+                        output t_analyzer_data4 analyzer_data_filtered
+    )
+{
+    net t_analyzer_mst analyzer_mst;
+    net t_analyzer_tgt analyzer_tgt;
+
+    default clock clk;
+    default reset active_low reset_n;
+    net t_analyzer_data4 analyzer_data_filtered;
+
+    net  t_analyzer_filter_cfg filter_cfg;
+    net  t_analyzer_trigger_cfg trigger_cfg;
+    net  t_analyzer_trace_cfg trace_cfg;
+    
+    comb  t_apb_request  apb_request_ctl  "APB request to target ctl";
+    comb  t_apb_request  apb_request_cfg  "APB request to target cfg";
+    comb  t_apb_request  apb_request_src  "APB request to target src";
+    net t_apb_response apb_response_ctl "APB response from target ctl";
+    net t_apb_response apb_response_cfg "APB response from target cfg";
+    net t_apb_response apb_response_src "APB response from target src";
+
+    modules: {
+        apb_response = {*=0};
+        apb_response |= apb_response_cfg;
+        apb_response |= apb_response_ctl;
+        apb_response |= apb_response_src;
+        apb_request_cfg = apb_request;
+        apb_request_ctl = apb_request;
+        apb_request_src = apb_request;
+        apb_request_cfg.psel = apb_request.psel && (apb_request.paddr[2;10] == 2b00);
+        apb_request_ctl.psel = apb_request.psel && (apb_request.paddr[2;10] == 2b01);
+        apb_request_src.psel = apb_request.psel && (apb_request.paddr[2;10] == 2b10);
+
+        analyzer_data4 = analyzer_tgt.data;
+
+        apb_target_analyzer_ctl ctl( clk <- clk,
+                                     reset_n <= reset_n,
+                                     apb_request <= apb_request_ctl,
+                                     apb_response => apb_response_ctl,
+                                     analyzer_mst => analyzer_mst,
+                                     analyzer_tgt <= analyzer_tgt
+            );
+
+        apb_target_analyzer_cfg cfg( clk <- clk,
+                                     reset_n <= reset_n,
+                                     apb_request <= apb_request_cfg,
+                                     apb_response => apb_response_cfg,
+                                     filter_cfg => filter_cfg,
+                                     trigger_cfg => trigger_cfg,
+                                     trace_cfg => trace_cfg );
+        
+    }
+    analyzer_target_logic : {
+
+        tb_apb_target_analyzer_src src( clk <- clk, reset_n <= reset_n,
+                                     apb_request <= apb_request_src,
+                                     apb_response => apb_response_src,
+                             analyzer_mst <= analyzer_mst,
+                             analyzer_tgt => analyzer_tgt
+            );
+        analyzer_trace_filter filter(
+            clk <- clk, reset_n <= reset_n,
+            din <= analyzer_tgt.data,
+            dout => analyzer_data_filtered,
+            filter_cfg <= filter_cfg );
+    }
+
+}

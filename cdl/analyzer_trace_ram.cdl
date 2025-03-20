@@ -1,0 +1,387 @@
+/** @copyright (C) 2004-2019,  Gavin J Stark.  All rights reserved.
+ *
+ * @copyright
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0.
+ *   Unless required by applicable law or agreed to in writing, software
+ *   distributed under the License is distributed on an "AS IS" BASIS,
+ *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *   See the License for the specific language governing permissions and
+ *   limitations under the License.
+ *
+ * @file   analyzer_trace_ram.cdl
+ * @brief  A sophisticated logical analyzer trace RAM
+ *
+ * Updated from the Embisi-gip analyzer module
+ *
+ * Takes an analyzer operation in and records it in a pair of 8kB SRAMs
+ *
+ * Can use the SRAM as FIFO or journal, and for histograms/stats
+ *
+ */
+
+/*a Includes
+ */
+include "analyzer.h"
+include "analyzer_trace_ram.h"
+include "analyzer_modules.h"
+include "utils::fifo_status.h"
+include "clocking::clock_timer.h"
+include "std::srams.h"
+
+/*a Types */
+/*t t_data_value_combs
+ */
+typedef struct
+{
+    bit[32] p0_data_in;
+    bit[33] p0_data_value "Data in minus base";
+
+    bit     p1_data_is_neg;
+    bit[32] p1_data_shf;
+    bit[64] p1_data_mask;
+    bit[32] p1_data_result;
+    bit[32] p1_data_unused;
+} t_data_value_combs;
+
+/*t t_data_value_state
+ */
+typedef struct
+{
+    bit[32] p0_din "Data in registered";
+    bit[33] p1_data_value "Data in minus base";
+    bit[32] p2_data_value;
+} t_data_value_state;
+
+/*t t_data_ofs_combs
+ */
+typedef struct
+{
+    bit[33]    p0_data_offset "Data offset minus base";
+    bit        p0_data_offset_is_neg  "Asserted if data offset < base";
+    bit[32]    p0_data_offset_shf "Data offset minus base shifted right";
+
+    bit[33]    p1_data_offset_bkt_1;
+    bit[33]    p1_data_offset_bkt_2;
+    bit[33]    p1_data_offset_bkt_3;
+    bit[33]    p1_data_offset_bkt_end;
+    bit        p1_data_offset_is_max;
+    bit[11]    p1_data_offset_bkt;
+    bit[11]    p1_data_offset_result;
+} t_data_ofs_combs;
+
+/*t t_data_ofs_state
+ */
+typedef struct
+{
+    bit[32]    p1_data_offset;
+    bit        p1_data_offset_is_neg;
+    bit[11]    p2_data_offset;
+} t_data_ofs_state;
+
+/*a Module
+ */
+module analyzer_trace_ram( clock clk,
+                           input bit reset_n,
+
+                           input  t_analyzer_trace_op4  trace_op "What operations to perform; takes precedence over access_req",
+                           input  t_analyzer_data4  din "Only bottom two words are used here",
+
+                           output t_fifo_status fifo_status_l,
+                           output t_fifo_status fifo_status_h,
+
+                           input t_analyzer_trace_access_req trace_access_req,
+                           input bit[2] trace_access_valid,
+                           output bit trace_access_rdy,
+                           output t_analyzer_trace_access_resp trace_access_resp,
+
+                           input  t_analyzer_trace_cfg trace_cfg
+ )
+"""
+
+This includes a dual-port 64-bit SRAM to provide a trace FIFO or journal, or histogram.
+
+It takes two operations per cycle - effectively one for each half of the 64-bit data.
+
+The data source for each 32-bit data D can be data, time, time delta (since last record), time record (does not do an op?)
+
+This initial data (for each 32-bits) is adjusted using:
+
+ D_value[i] = ((D[i] - cfg.value_base[i]) >> cfg.value_shf[i]) [ & cfg.value_mask[i] or max_min at value_mask]
+
+By max-min - if using max_min and ((D[i] - cfg.value_base[i]) >> cfg.value_shf[i]) is negative (signed shift!) then use 0, and if +ve and any bit of ~value_mask is set then use value_mask
+
+For histogram operation an 11-bit SRAM index must be calculated. This comes from 32-bit
+data D. This should be:
+
+ D_ofs   = (D[0 or 1] - cfg.ofs_base) >> cfg.ofs_shf
+ D_ofs_bkt_1  = D_ofs - 512;
+ D_ofs_bkt_2  = D_ofs - (512+2048);
+ D_ofs_bkt_3  = D_ofs - (512+2048+8192);
+ D_ofs_bkt_end  = D_ofs - (512+2048+8192+32768);
+ D_ofs_is_MAX = (D_ofs_bkt_end>=0)
+
+ if D_ofs_is_MAX {
+     index = 2047;
+ else if D_ofs_bkt_3 >= 0 { // D_ofs_bkt_3 >=0
+     index = 2b11, D_ofs_bkt_3[9;6];
+ else if D_ofs_bkt_2 >= 0 { // D_ofs_bkt_2 >= 0, bkt_3 <0
+     index = 2b10, D_ofs_bkt_2[9;4];
+ else if D_ofs_bkt_1 >= 0 { // D_ofs_bkt_1 >=0, bkt_2< 0 (and 3)
+     index = 2b01, D_ofs_bkt_1[9;2];
+ else { // D_ofs >=0 (probably), bkt_1 <0 (and 2, 3)
+     index = 2b00, D_ofs[9;0];
+ }
+ if cfg.no_bkts {
+  index = D_ofs[11;0];
+ }
+ if D_ofs <= 0 { index = 0; }
+
+One side of the SRAM can be used for a histogram; this uses the offset above, and can:
+
+a. saturating 32-bit increment
+
+b. saturating 16-bit increment and saturating add 16-bit value
+ 
+Both sides of the SRAM can be used for a histogram; this uses the offset above, and can:
+
+c. saturating 32-bit increment and saturating 32-bit sum of values
+ 
+d. saturating 16-bit increment and saturating 16-bit value and record min/max 16-bit value
+ 
+e. saturating 32-bit increment and record min 32-bit value
+ 
+f. saturating 32-bit increment and record max 32-bit value
+ 
+g. record min 32-bit value and record max 32-bit value
+
+If one side is used as a histogram the other can be used for a FIFO or journal of:
+
+a. 8-bit values
+
+b. 16-bit values
+
+c. 32-bit values
+
+If neither side is used as a histogram the SRAMs can be used for a single FIFO or journal of:
+
+a. 8-bit values
+
+b. 16-bit values
+
+c. 32-bit values
+
+If neither side is used as a histogram the SRAMs can be used for TWO independent FIFO or journal of:
+
+a. 8-bit values
+
+b. 16-bit values
+
+c. 32-bit values
+
+"""
+
+{
+    /*b Default clock and reset
+     */
+    default clock clk;
+    default reset active_low reset_n;
+
+    /*b State and combs */
+    clocked t_analyzer_trace_op4 p0_trace_op = {*=0};
+    clocked t_analyzer_trace_op4 p1_trace_op = {*=0};
+    clocked t_analyzer_trace_op4 p2_trace_op = {*=0};
+    clocked t_analyzer_data4 p0_data = {*=0};
+    clocked bit p1_data_valid = 0;
+    clocked bit p2_data_valid = 0;
+    comb t_vdata_32 p0_data_0;
+    comb t_vdata_32 p0_data_1;
+
+    net t_vdata_32 p2_data_value_0;
+    net t_vdata_32 p2_data_value_1;
+    net t_vdata_32 p2_data_ofs;
+    
+    comb t_analyzer_trace_access_req[2] access_combs;
+    net t_analyzer_trace_access_resp[2] access_resp;
+    
+    net t_fifo_status fifo_status_l;
+    net t_fifo_status fifo_status_h;
+
+    /*b Access handling
+     */
+    access_handling: {
+        if (trace_op.op_valid != 0 || p0_data.valid) {
+            p0_trace_op <= trace_op;
+            p0_data <= din;
+            p0_data.valid <= trace_op.op_valid != 0;
+        }
+        if (p0_data.valid || p1_data_valid) {
+            p1_data_valid <= p0_data.valid;
+            p1_trace_op <= p0_trace_op;
+        }
+        if (p1_data_valid || p2_data_valid) {
+            p2_data_valid <= p1_data_valid;
+            p2_trace_op <= p1_trace_op;
+        }
+        trace_access_rdy = !p2_data_valid;
+
+        // Set things up for a basic op
+        for (i; 2) {
+            access_combs[i].id = 0;
+            access_combs[i].alu_op = atr_alu_op_write32;
+            access_combs[i].read_enable = 1;
+            access_combs[i].write_enable = 1;
+            access_combs[i].address_op = atr_address_op_access;
+            access_combs[i].word_address[12;0] = p2_data_ofs.data[12;0];
+            access_combs[i].byte_of_sram = 0;
+        }
+        access_combs[0].op_data = p2_data_value_0.data;
+        access_combs[1].op_data = p2_data_value_1.data;
+
+        full_switch (p2_trace_op.op_0) {
+        case atr_data_op_push: {
+            access_combs[0].read_enable = trace_cfg.fifo_0.data_width!=3;
+            access_combs[0].address_op = atr_address_op_push;
+            access_combs[0].alu_op = atr_alu_op_write32; // 8 or 16
+        }
+        case atr_data_op_write: {
+            access_combs[0].alu_op = atr_alu_op_write32; // 8 or 16
+        }
+        case atr_data_op_inc: {
+            access_combs[0].alu_op = atr_alu_op_inc32;
+        }
+        case atr_data_op_sum: {
+            access_combs[0].alu_op = atr_alu_op_sum32;
+        }
+        case atr_data_op_min: {
+            access_combs[0].alu_op = atr_alu_op_min32;
+        }
+        case atr_data_op_max: {
+            access_combs[0].alu_op = atr_alu_op_max32;
+        }
+        case atr_data_op_min_max: {
+            access_combs[0].alu_op = atr_alu_op_min_max16;
+        }
+        case atr_data_op_inc_add: {
+            access_combs[0].alu_op = atr_alu_op_inc16_add16;
+        }
+        }
+
+        access_combs[1].op_data = p2_data_value_1.data;
+        full_switch (p2_trace_op.op_1) {
+        case atr_data_op_push: {
+            access_combs[1].read_enable = trace_cfg.fifo_1.data_width!=3;
+            access_combs[1].address_op = atr_address_op_push;
+            access_combs[1].alu_op = atr_alu_op_write32; // 8 or 16
+        }
+        case atr_data_op_write: {
+            access_combs[1].alu_op = atr_alu_op_write32; // 8 or 16
+        }
+        case atr_data_op_inc: {
+            access_combs[1].alu_op = atr_alu_op_inc32;
+        }
+        case atr_data_op_sum: {
+            access_combs[1].alu_op = atr_alu_op_sum32;
+        }
+        case atr_data_op_min: {
+            access_combs[1].alu_op = atr_alu_op_min32;
+        }
+        case atr_data_op_max: {
+            access_combs[1].alu_op = atr_alu_op_max32;
+        }
+        case atr_data_op_min_max: {
+            access_combs[1].alu_op = atr_alu_op_min_max16;
+        }
+        case atr_data_op_inc_add: {
+            access_combs[1].alu_op = atr_alu_op_inc16_add16;
+        }
+        }
+
+        for (i; 2) {
+            if (!p2_data_valid || !p2_trace_op.op_valid[i]) {
+                access_combs[i].read_enable = 0;
+                access_combs[i].write_enable = 0;
+                access_combs[i].address_op = atr_address_op_access;
+            }
+        }
+
+        if (trace_access_rdy) {
+            access_combs[0] = trace_access_req;
+            access_combs[1] = trace_access_req;
+            for (i; 2) {
+                if (!trace_access_valid[i]) {
+                    access_combs[i].read_enable = 0;
+                    access_combs[i].write_enable = 0;
+                    access_combs[i].address_op = atr_address_op_access;
+                }
+            }
+        }
+    }
+
+    /*b Data value logic
+     */
+    data_value_path "Initial data value path": {
+
+        p0_data_0 = {valid = din.valid, data=din.data_0};
+        p0_data_1 = {valid = din.valid, data=din.data_1};
+
+        analyzer_trace_data_value_bound bnd0( clk <- clk,
+                                              reset_n <= reset_n,
+                                              din <= p0_data_0,
+                                              trace_cfg <= trace_cfg.value_0,
+                                              p2_data_value => p2_data_value_0
+            );
+
+        analyzer_trace_data_value_bound bnd1( clk <- clk,
+                                              reset_n <= reset_n,
+                                              din <= p0_data_1,
+                                              trace_cfg <= trace_cfg.value_1,
+                                              p2_data_value => p2_data_value_1
+            );
+
+    }
+
+    /*b Initial data logic
+     */
+    initial_data_path "Initial data path": {
+        analyzer_trace_data_offset_bound bnd_ofs( clk <- clk,
+                                                  reset_n <= reset_n,
+                                                  p0_data <= p0_data,
+                                                  trace_cfg <= trace_cfg.offset,
+                                                  p2_data => p2_data_ofs
+            );
+    }
+
+    /*b Datapaths
+     */
+    datapaths "Data paths": {
+        analyzer_trace_ram_data_path dp_0( clk<-clk,
+                                           reset_n <= reset_n,
+                                           access_req <= access_combs[0],
+                                           access_resp => access_resp[0],
+                                           fifo_status => fifo_status_l,
+                                           trace_cfg_fifo <= trace_cfg.fifo_0
+            );
+        analyzer_trace_ram_data_path dp_1( clk<-clk,
+                                           reset_n <= reset_n,
+                                           access_req <= access_combs[1],
+                                           access_resp => access_resp[1],
+                                           fifo_status => fifo_status_h,
+                                           trace_cfg_fifo <= trace_cfg.fifo_1
+            );
+    }
+
+    /*b Trace response
+     */
+    trace_response "Trace response": {
+        trace_access_resp = access_resp[0];
+        if (access_resp[1].valid && !access_resp[0].valid) {
+            trace_access_resp = access_resp[1];
+        }
+    }
+    
+    /*b Done
+     */
+}

@@ -1,0 +1,183 @@
+/*a Includes
+ */
+include "apb::apb.h"
+include "analyzer.h"
+include "analyzer_modules.h"
+include "std::srams.h"
+
+/*a Types */
+/*t t_apb_address
+ * APB address map, used to decode paddr
+ */
+typedef enum [4] {
+    apb_address_config      = 0,
+    apb_address_select      = 1,
+    apb_address_select_at   = 2,
+    apb_address_write_data  = 3,
+} t_apb_address;
+
+/*t t_access
+ * APB access that is in progress; a decode of psel and paddr
+ */
+typedef enum [3] {
+    access_none            "No access being performed",
+    access_write_data      "Write data to selected node(s)",
+    access_read_status     "Read status",
+    access_select          "Select all or no endpoints",
+    access_select_at       "Select *one* endpoint",
+} t_access;
+
+/*t t_apb_state */
+typedef struct {
+    t_access access;
+} t_apb_state;
+
+/*a Module
+ */
+module apb_target_analyzer_ctl( clock clk,
+                                input bit reset_n,
+
+                                input  t_apb_request  apb_request  "APB request",
+                                output t_apb_response apb_response "APB response",
+
+                                output  t_analyzer_mst  analyzer_mst,
+                                input t_analyzer_tgt  analyzer_tgt "Data not used"
+
+    )
+"""
+This module drives the analyzer_mst bus as the root of the control bus.
+
+Apb writes to select, select_at and write_data are supported;
+an APB read of the config/status is supported.
+
+The read status presents the 'count' on the bottom 24 bits, and the
+'completed' indication is provided in bit 31
+
+A select transaction with data of 'count' drives enable down the
+analyzer control chain and waits for it to return high; it sets
+'select' high (and keeps it there) after 'count' cycles; this is used
+to select a particular target on the chain.
+
+A select write with data 0 selects *no* targets; it clears select and
+then drives enable high, and waits (counting) until enable_return is
+high. The count, at this point, indicates the length of the chain. A
+select write with data 1 does the same by keeping the select signal
+high for this duration.
+
+[ Why would one do a select with data of 1? ]
+
+A select write with top data bit set forces enable to be clear, and it
+waits until enable_return is clear, counting.
+
+Once a select has completed, data can be written to the selected
+target by a 'write data' command; this shifts data in from the bottom,
+reversing the nybbles; nybbles are shifted out as they are written,
+and data stops being written when it is zero - so the last nybble that
+is to be written (the bottom nybble of data at the target) must be
+non-zero. Note that if a target is configured with a trace width of
+less than four 32-bit values then it will include a multiplexer
+selected by the last nybble written.
+
+Usage
+
+Perform a select write with data 0, to count the length of the
+analyzer control chain; when the status read has top bit set the count
+will be correct. This clears the drivers as well as counting.
+
+Clear the enable with a select write with data with the top bit set;
+wait for that to complete.
+
+Select a specific target by first clearing the enable, then performing
+a 'select_at'.
+
+"""
+
+{
+    /*b Default clock and reset
+     */
+    default clock clk;
+    default reset active_low reset_n;
+
+    /*b Outputs for the async trace read interface
+     */
+    clocked t_apb_state apb_state = {*=0};
+    comb t_analyzer_mst_ctl mst_ctl;
+
+    net t_analyzer_mst_ctl_resp  mst_ctl_resp;
+    net t_analyzer_mst  analyzer_mst;
+
+    /*b APB interface
+     */
+    apb_interface "APB interface": {
+
+        /*b Handle APB read data - may affect pready */
+        apb_response = {*=0, pready=1};
+        part_switch (apb_state.access) {
+        case access_read_status: {
+            apb_response.prdata[16;0] = mst_ctl_resp.count[16;0];
+            apb_response.prdata[30] = mst_ctl_resp.selected;
+            apb_response.prdata[31] = mst_ctl_resp.completed;
+        }
+        }
+
+        /*b Decode access */
+        apb_state.access <= access_none;
+        part_switch (apb_request.paddr[4;0]) {
+        case apb_address_config: {
+            apb_state.access <= apb_request.pwrite ? access_none : access_read_status;
+        }
+        case apb_address_select: {
+            apb_state.access <= apb_request.pwrite ? access_select : access_none;
+        }
+        case apb_address_select_at: {
+            apb_state.access <= apb_request.pwrite ? access_select_at : access_none;
+        }
+        case apb_address_write_data: {
+            apb_state.access <= apb_request.pwrite ? access_write_data : access_none;
+        }
+        }
+        if (!apb_request.psel || (apb_request.penable && apb_response.pready)) {
+            apb_state.access <= access_none;
+        }
+
+        /*b Decode the actl_op
+         */
+        mst_ctl = {*=0};
+        mst_ctl.actl_op = actl_op_none;
+        mst_ctl.data[32;0] = apb_request.pwdata;
+        full_switch (apb_state.access) {
+        case access_select_at: {
+            mst_ctl.actl_op = actl_op_select;
+        }
+        case access_select: {
+            mst_ctl.actl_op = actl_op_select_all;
+            if (apb_request.pwdata == 0) {
+                mst_ctl.actl_op = actl_op_select_none;
+            } elsif (apb_request.pwdata[31]) {
+                mst_ctl.actl_op = actl_op_clear_enable;
+            }
+        }
+        case access_write_data: {
+            mst_ctl.actl_op = actl_op_write_data;
+        }
+        default: {
+            mst_ctl.actl_op = actl_op_none;
+        }
+        }
+    }
+
+    /*b Analyzer control master
+     */
+    analyzer_control_fsm "Analyzer control FSM logic": {
+        analyzer_control_master ctl_master(
+            clk <- clk,
+            reset_n <= reset_n,
+            mst_ctl <= mst_ctl,
+            mst_ctl_resp => mst_ctl_resp,
+            analyzer_mst => analyzer_mst,
+            analyzer_tgt <= analyzer_tgt );
+    }
+
+    /*b Done
+     */
+}

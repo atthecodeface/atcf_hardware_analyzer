@@ -1,25 +1,8 @@
-/** Copyright (C) 2020,  Gavin J Stark.  All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- * @file   analyzer.h
- * @brief  Types for the analyzer data/control buses
- *
- * Header file for the types for the analyzer data/control buses
- *
+/*a Includes
  */
+include "std::valid_data.h"
 
-/*a Types */
+/*a Types for the analyzer bus (ctl and data) */
 /*t t_analyzer_mst - Master interface towards target */
 typedef struct {
     bit    valid  "If asserted, shift in the data to the control registers";
@@ -28,17 +11,21 @@ typedef struct {
     bit    select "If high when enable is seen to go high at a node then that node is selected and enabled";
 } t_analyzer_mst;
 
-/*t t_analyzer_data - Analyzer data */
+/*t t_analyzer_data4
+ */
 typedef struct {
-    bit     valid    "High if the data is valid from the target";
-    bit[64] data     "Analyzer data";
-} t_analyzer_data;
+    bit valid  "High if the data is valid from the target";
+    bit[32] data_0;
+    bit[32] data_1;
+    bit[32] data_2;
+    bit[32] data_3;
+} t_analyzer_data4;
 
 /*t t_analyzer_tgt - Target interface back towards master */
 typedef struct {
     bit     enable_return "If high and selected then node is enabled - chained through bus joiners and targets; if seen as low, then do not drive data bus";
     bit     selected      "Asserted if node is selected - for status only";
-    t_analyzer_data data  "Data from node; all zeros if not selected";
+    t_analyzer_data4 data  "Data from node; all zeros if not selected";
 } t_analyzer_tgt;
 
 /*t t_analyzer_ctl - Control information to a target */
@@ -46,4 +33,257 @@ typedef struct {
     bit     enable;
     bit[32] mux_control "Shifted in from valid/data - cleared when a node becomes selected";
 } t_analyzer_ctl;
+
+/*a Types for control master */
+/*t t_actl_op
+ * APB control op
+ */
+typedef enum [3] {
+    actl_op_none,
+    actl_op_clear_enable,
+    actl_op_select,
+    actl_op_select_all,
+    actl_op_select_none,
+    actl_op_write_data,
+} t_actl_op;
+
+/*t t_analyzer_mst_ctl
+ * Analyzer control operation
+ */
+typedef struct {
+    t_actl_op actl_op;
+    bit[64] data;
+} t_analyzer_mst_ctl;
+
+/*t t_analyzer_mst_ctl_resp
+ * Analyzer control response
+ */
+typedef struct {
+    bit[16] count;
+    bit selected;
+    bit completed;
+} t_analyzer_mst_ctl_resp;
+
+/*a Types for the trace */
+/*t t_analyzer_filter_cfg
+ */
+typedef struct {
+    bit enable;
+    bit accept_unchanging;
+    t_analyzer_data4 mask;
+    t_analyzer_data4 value;
+} t_analyzer_filter_cfg;
+
+/*t t_analyzer_trace_cfg_value
+ */
+typedef struct {
+    bit[24] base;
+    bit[5] shift;
+    bit[5] mask_size;
+    bit max_min;
+} t_analyzer_trace_cfg_value;
+
+/*t t_analyzer_trace_cfg_ofs
+ */
+typedef struct {
+    bit[24] base;
+    bit[5] shift;
+    bit use_data_1;
+    bit no_bkts;
+} t_analyzer_trace_cfg_ofs;
+
+/*t t_analyzer_trace_cfg_fifo
+ */
+typedef struct {
+    bit[2] data_width;
+    bit journal;
+    bit fifo_per_ram;
+    bit ram_of_fifo;
+    bit enable_push;
+} t_analyzer_trace_cfg_fifo;
+
+/*t t_analyzer_trace_cfg
+ */
+typedef struct {
+    bit enable;
+    t_analyzer_trace_cfg_value value_0;
+    t_analyzer_trace_cfg_value value_1;
+    t_analyzer_trace_cfg_ofs offset;
+    t_analyzer_trace_cfg_fifo fifo_0;
+    t_analyzer_trace_cfg_fifo fifo_1;
+} t_analyzer_trace_cfg;
+
+/*a Types for analyzer trace */
+/*t t_atr_alu_op
+ */
+typedef enum[4] {
+    atr_alu_op_clear,
+    atr_alu_op_write8,
+    atr_alu_op_write16,
+    atr_alu_op_write32,
+    atr_alu_op_inc32,
+    atr_alu_op_sum32,
+    atr_alu_op_min32,
+    atr_alu_op_max32,
+    atr_alu_op_min_max16,
+    atr_alu_op_inc16_add16
+} t_atr_alu_op;
+
+/*t t_analyzer_trace_address_op
+ */
+typedef enum[3] {
+    atr_address_op_access,
+    atr_address_op_reset_ptrs,
+    atr_address_op_push,
+    atr_address_op_pop,
+} t_analyzer_trace_address_op;
+
+/*t t_analyzer_trace_access_resp
+ */
+typedef struct
+{
+    bit            valid;
+    bit[2]         id;
+    bit[32]        data;
+} t_analyzer_trace_access_resp;
+
+/*t t_analyzer_trace_access_req
+ */
+typedef struct
+{
+    bit            read_enable;
+    bit            write_enable;
+    bit[2]         id;
+    t_analyzer_trace_address_op   address_op;
+    bit[32]        op_data;
+    bit[16]        word_address;
+    t_atr_alu_op   alu_op;
+    bit[2]         byte_of_sram;
+} t_analyzer_trace_access_req;
+
+/*t t_analyzer_trace_data_op
+ */
+typedef enum[3] {
+    atr_data_op_push,
+    atr_data_op_write,
+    atr_data_op_inc,
+    atr_data_op_sum,
+    atr_data_op_min,
+    atr_data_op_max,
+    atr_data_op_min_max,
+    atr_data_op_inc_add
+} t_analyzer_trace_data_op;
+
+/*t t_analyzer_trace_op4
+ *
+ * Currently just a capture bit for each 'port'
+ *
+ */
+typedef struct {
+    bit[4] op_valid;
+    t_analyzer_trace_data_op op_0;
+    t_analyzer_trace_data_op op_1;
+    t_analyzer_trace_data_op op_2;
+    t_analyzer_trace_data_op op_3;
+} t_analyzer_trace_op4;
+
+/*a Types for analyzer trigger */
+/*t t_analyzer_trigger_timer
+ */
+typedef struct
+{
+    bit[32] value;
+    bit[32] timer_delta "Valid if recorded_delta is valid";
+    t_vdata_32 recorded_value;
+    t_vdata_32 recorded_delta;
+} t_analyzer_trigger_timer;
+
+/*t t_analyzer_trigger_ctl
+ */
+typedef struct {
+    bit enable;
+    bit clear;
+    bit running;
+} t_analyzer_trigger_ctl;
+
+/*t t_analyzer_trigger_cfg_actions
+ */
+typedef struct {
+    bit  halt_capture;
+    bit  record_data;
+    bit  record_time;
+    bit  record_invalidate;
+    bit[2]  capture_data;
+} t_analyzer_trigger_cfg_actions;
+
+/*t t_analyzer_trigger_cfg_byte
+ */
+typedef struct {
+    bit ignore_valid;
+    bit[3] byte_sel;
+    bit[8] mask;
+    bit[8] match;
+    bit[2] cond_sel;
+} t_analyzer_trigger_cfg_byte;
+
+/*t t_analyzer_trigger_cfg_data_src
+ */
+typedef enum[2] {
+    atc_ds_data_0,
+    atc_ds_data_1,
+    atc_ds_data_2,
+    atc_ds_data_3,
+} t_analyzer_trigger_cfg_data_src;
+
+/*t t_analyzer_trigger_cfg_match_data_src
+ */
+typedef enum[3] {
+    blah,
+} t_analyzer_trigger_cfg_match_data_src;
+
+
+/*t t_analyzer_trigger_cfg_trace_data_source
+ */
+typedef enum[3] {
+    atc_trace_data_source_timer,
+    atc_trace_data_source_timer_delta,
+    atc_trace_data_source_rd,
+    atc_trace_data_source_din_0,
+    atc_trace_data_source_din_1,
+} t_analyzer_trigger_cfg_trace_data_source;
+
+/*t t_analyzer_trigger_cfg
+ */
+typedef struct {
+    bit enable;
+    bit clear;
+    bit start;
+    bit stop;
+    bit[2] timer_div;
+    t_analyzer_trigger_cfg_data_src data_src_0;
+    t_analyzer_trigger_cfg_data_src data_src_1;
+    t_analyzer_trigger_cfg_match_data_src match_data_src_0;
+    t_analyzer_trigger_cfg_match_data_src match_data_src_1;
+    t_analyzer_trigger_cfg_byte tb_0;    
+    t_analyzer_trigger_cfg_byte tb_1;    
+    t_analyzer_trigger_cfg_byte tb_2;    
+    t_analyzer_trigger_cfg_byte tb_3;    
+    bit[48] action_set "Sixteen 3-bit action sets; the index is taken from bundling the 4 matched bits";
+    t_analyzer_trigger_cfg_actions actions_0 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_actions actions_1 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_actions actions_2 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_actions actions_3 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_actions actions_4 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_actions actions_5 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_actions actions_6 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_actions actions_7 "Actions used based on action_set";
+    t_analyzer_trigger_cfg_trace_data_source trace_data_source_0;
+    t_analyzer_trigger_cfg_trace_data_source trace_data_source_1;
+    t_analyzer_trigger_cfg_trace_data_source trace_data_source_2;
+    t_analyzer_trigger_cfg_trace_data_source trace_data_source_3;
+    t_analyzer_trace_data_op trace_op_0;
+    t_analyzer_trace_data_op trace_op_1;
+    t_analyzer_trace_data_op trace_op_2;
+    t_analyzer_trace_data_op trace_op_3;
+} t_analyzer_trigger_cfg;
 

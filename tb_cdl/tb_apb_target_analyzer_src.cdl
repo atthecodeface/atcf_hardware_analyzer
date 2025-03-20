@@ -1,0 +1,177 @@
+/*a Includes
+ */
+include "apb::apb.h"
+include "analyzer.h"
+include "analyzer_modules.h"
+include "std::srams.h"
+
+/*a Types */
+/*t t_apb_address
+ * APB address map, used to decode paddr
+ */
+typedef enum [4] {
+    apb_address_config   = 0,
+    apb_address_data_0   = 4,
+    apb_address_data_1   = 5,
+    apb_address_data_2   = 6,
+    apb_address_data_3   = 7,
+} t_apb_address;
+
+/*t t_access
+ * APB access that is in progress; a decode of psel and paddr
+ */
+typedef enum [3] {
+    access_none           "No access being performed",
+    access_read_status    "Read status",
+    access_write_config   "Write config",
+    access_read_data      "Read data N",
+    access_write_data     "Write data N",
+} t_access;
+
+typedef enum [4] {
+    tgt_mode_disabled,
+    tgt_mode_enabled
+} t_tgt_mode;
+
+typedef enum [3] {
+    op_mode_hold,
+    op_mode_incr,
+    op_mode_lfsr,
+} t_op_mode;
+
+/*t t_data_state */
+typedef struct {
+    t_op_mode op_mode;
+    bit[32] data;
+} t_data_state;
+    
+/*t t_apb_state */
+typedef struct {
+    t_access access;
+    bit[2] access_data;
+    t_tgt_mode tgt_mode;
+    bit tgt_valid;
+} t_apb_state;
+
+/*a Module
+ */
+module tb_apb_target_analyzer_src( clock clk,
+                                   input bit reset_n,
+
+                                   input  t_apb_request  apb_request  "APB request",
+                                   output t_apb_response apb_response "APB response",
+
+                                   input  t_analyzer_mst  analyzer_mst,
+                                   output t_analyzer_tgt  analyzer_tgt
+
+    )
+"""
+"""
+
+{
+    /*b Default clock and reset
+     */
+    default clock clk;
+    default reset active_low reset_n;
+
+    /*b Outputs for the async trace read interface
+     */
+    clocked t_apb_state apb_state = {*=0};
+    clocked t_data_state[4] data = {*=0};
+    comb t_analyzer_data4 analyzer_data;
+    net t_analyzer_ctl analyzer_ctl;
+    net t_analyzer_tgt analyzer_tgt;
+
+    /*b APB interface
+     */
+    apb_interface "APB interface": {
+
+        /*b Handle APB read data - may affect pready */
+        apb_response = {*=0, pready=1};
+        part_switch (apb_state.access) {
+        case access_read_status: {
+            apb_response.prdata[4;0] = apb_state.tgt_mode;
+            apb_response.prdata[3;16] = data[0].op_mode;
+            apb_response.prdata[3;20] = data[1].op_mode;
+            apb_response.prdata[3;24] = data[2].op_mode;
+            apb_response.prdata[3;28] = data[3].op_mode;
+        }
+        }
+
+        /*b Decode access */
+        apb_state.access <= access_none;
+        part_switch (apb_request.paddr[4;0]) {
+        case apb_address_config: {
+            apb_state.access <= apb_request.pwrite ? access_write_config : access_read_status;
+        }
+        default: {
+            apb_state.access <= apb_request.pwrite ? access_write_data : access_read_data;
+            apb_state.access_data <= apb_request.paddr[2;0];
+        }
+        }
+        if (!apb_request.psel || (apb_request.penable && apb_response.pready)) {
+            apb_state.access <= access_none;
+            apb_state.access_data <= apb_state.access_data;
+        }
+
+        /*b Decode the actl_op
+         */
+        part_switch (apb_state.access) {
+        case access_write_config: {
+            apb_state.tgt_mode <= apb_request.pwdata[4;0];
+            data[0].op_mode <= apb_request.pwdata[3;16];
+            data[1].op_mode <= apb_request.pwdata[3;20];
+            data[2].op_mode <= apb_request.pwdata[3;24];
+            data[3].op_mode <= apb_request.pwdata[3;28];
+        }
+        }
+    }
+
+    /*b Analyzer control master
+     */
+    analyzer_control_fsm "Analyzer control FSM logic": {
+        for (i; 4) {
+            part_switch (data[i].op_mode) {
+            case op_mode_incr: {
+                data[i].data <= data[i].data+1;
+            }
+            case op_mode_lfsr: {
+                if (data[i].data[0]) {
+                    data[i].data <= (data[i].data>>1) ^ 32ha3000000;
+                } else {
+                    data[i].data <= (data[i].data>>1);
+                }
+            }
+            }
+            if ((apb_state.access == access_write_data) && (apb_state.access_data==i)) {
+                data[i].data <= apb_request.pwdata;
+            }
+        }
+
+        apb_state.tgt_valid <= 0;
+        part_switch (apb_state.tgt_mode) {
+            case tgt_mode_enabled: {
+                apb_state.tgt_valid <= 1;
+            }
+        }
+        analyzer_data.valid = apb_state.tgt_valid;
+        analyzer_data.data_0 = data[0].data;
+        analyzer_data.data_1 = data[1].data;
+        analyzer_data.data_2 = data[2].data;
+        analyzer_data.data_3 = data[3].data;
+
+        analyzer_target tgt( clk <- clk, reset_n <= reset_n,
+                             analyzer_mst <= analyzer_mst,
+                             analyzer_tgt => analyzer_tgt,
+                              
+                             analyzer_ctl => analyzer_ctl,
+                             analyzer_data <= analyzer_data,
+
+                             analyzer_tgt_id <= 32h0000_feed
+                            
+            );
+    }
+
+    /*b Done
+     */
+}

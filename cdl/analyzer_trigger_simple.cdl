@@ -1,0 +1,496 @@
+/*a Includes
+ */
+include "analyzer.h"
+include "analyzer_modules.h"
+include "analyzer_trigger.h"
+include "analyzer_trace_ram.h"
+include "utils::fifo_status.h"
+include "clocking::clock_timer.h"
+include "std::srams.h"
+include "std::valid_data.h"
+
+/*a Types */
+/*t t_timer_combs
+ */
+typedef struct
+{
+    bit[32] value;
+    bit[32] timer_delta;
+} t_timer_combs;
+
+/*t t_timer_state
+ */
+typedef struct
+{
+    bit[32] value;
+    t_vdata_32 recorded_value;
+    bit[32] timer_delta "Valid if recorded_value is valid";
+} t_timer_state;
+
+/*t t_p01_combs
+ *
+ * Values derived from p0 state
+ *
+ */
+typedef struct
+{
+    t_vdata_32 match_data_0;
+    t_vdata_32 match_data_1;
+    bit[32][2] data_word;
+} t_p01_combs;
+
+/*t t_p1_state
+ *
+ */
+typedef struct
+{
+    t_vdata_32 match_data_0;
+    t_vdata_32 match_data_1;
+} t_p1_state;
+
+/*t t_p2_state
+ *
+ */
+typedef struct
+{
+    t_vdata_32 match_data "Data that was in match_data[0]";
+} t_p2_state;
+
+/*t t_p23_combs
+ *
+ * Values derived from p2 state
+ *
+ */
+typedef struct
+{
+    bit[48] action_set;
+} t_p23_combs;
+
+/*t t_p3_state
+ *
+ */
+typedef struct
+{
+    t_vdata_32 match_data "Data that was in match_data[0]";
+    t_analyzer_trigger_cfg_actions capture_actions "Actions to take in p3-p4 state";
+} t_p3_state;
+
+/*t t_p34_combs
+ *
+ * Values derived from p3 state
+ *
+ */
+typedef struct
+{
+    bit record_invalidate;
+    bit record_data;
+    bit record_time;
+    bit halt_capture;
+    bit[2] capture_data;
+} t_p34_combs;
+
+/*a Module
+ */
+module analyzer_trigger_simple( clock clk,
+                           input bit reset_n,
+
+                           input  t_analyzer_data4  din,
+                           output  t_analyzer_data4 dout,
+
+                           output  t_analyzer_trace_op4 trace_op,
+                           input t_timer_value timer_value,
+
+                           input  t_analyzer_trigger_cfg trigger_cfg_in
+ )
+"""
+This module is designed to present a trace capture for a 64-bit data output, or rather two 32-bit outputs.
+
+The basic output is two 32-bit data outputs and whether to capture
+for one or both of two trace capture sides; the trace capture may both
+use one of the two outputs, or they may use both outputs separately.
+
+The actual data output as a trigger is the full t_analyzer_data4; only
+the bottom two values are updated here (they upper two should
+be ignored downstream).
+    
+Pipeline
+
+[0] = data captured
+
+     selecting match data (uses timer delta, recorded data)
+
+[1] = match data
+
+    matching on byte of match data
+
+[2] = match determined, holding data_0
+
+    finding action set based on combining the 4 determined matches
+
+[3] = action set determined, holding data_0
+
+    COMMIT stage
+
+    decode action set to actions to perform
+    
+    determine whether to record data_0, time, and 
+
+[4] = data out and capture opt out, recorded data, timer delta
+
+    drive outputs
+
+
+So some configurations:
+
+
+* Record time that state machine is not idle; captures time leaves idle, time enters idle, and deltas
+
+* byte mask/match 0 on din.data0[8;0] == 8b_xxx000xx (idle state of fsm)
+
+* If BMM 0 set: record time
+
+* If BMM 0 set and changed: capture dout_0 = time delta, capture dout_1 = time value
+
+
+* Record FSM state and time since last idle.
+
+* byte mask/match 0 on din.data0[8;0] == 8b_xxx000xx (idle state of fsm)
+
+* byte mask/match 1 on din.data0[8;0] == 8b_xxxSSSxx (other state of FSM)
+
+* If BMM 0: record time
+
+* If BMM 1 and changed or BMM 0 and changed: capture dout_0 = din_0, capture dout_1 = time delta
+
+
+* Record Fifo occupancy changes
+
+* byte mask/match 0 on din.data0[8;8] == 8b_00000000
+
+* byte mask/match 1 on din.data0[8;8] == 8b_SSSSSSSS
+
+* byte mask/match 2 on din.data0[8;16] == 8b_xx000000
+
+* byte mask/match 3 on din.data0[8;16] == 8b_xxSSSSSS
+
+* If BMM 0 changed or BMM 1 changed or BMM 2 changed or BMM 3 changed: capture dout_0 = din_0
+
+
+* Two independent traces
+
+* byte mask/match 0 on din.data0[8;0] == 8b_xxx00xxx
+
+* byte mask/match 1 on din.data1[8;24] == 8b_xx11xxxx
+
+* If BMM 0: capture dout_0 = d0_data,
+
+* If BMM 1 and changed : capture dout_1 = d1_data
+
+
+"""
+
+{
+    /*b Default clock and reset
+     */
+    default clock clk;
+    default reset active_low reset_n;
+
+    /*b State and combs */
+    clocked t_timer_state timer_state = {*=0};
+    clocked t_vdata_32 recorded_data = {*=0};
+    clocked t_analyzer_data4[5] data = {*=0};
+
+    comb t_timer_combs timer_combs;
+
+    comb t_p01_combs p01_combs;
+    clocked t_p1_state p1_state = {*=0};
+
+    clocked t_p2_state p2_state = {*=0};
+
+    net bit[4] p2_matched;
+    comb t_p23_combs p23_combs;
+
+    clocked t_p3_state p3_state = {*=0};
+    comb t_p34_combs p34_combs;
+
+    clocked t_analyzer_trigger_cfg trigger_cfg = {*=0};
+    net t_analyzer_trigger_ctl trigger_ctl;
+    comb t_analyzer_trigger_cfg_actions[8] trigger_cfg_actions;
+    comb t_analyzer_trigger_cfg_data_src[2] trigger_cfg_ds;
+    comb t_analyzer_trigger_cfg_match_data_src[2] trigger_cfg_match_ds;
+    comb t_analyzer_trigger_cfg_trace_data_source[2] trigger_cfg_trace_ds;
+
+    clocked bit[32][4] data_out = {*=0};
+    clocked  t_analyzer_trace_op4 trace_op ={*=0};
+
+    /*b Trigger control
+    */
+    trigger_ctl_logic: {
+        analyzer_trigger_control ctrl( clk <- clk,
+                                  reset_n <= reset_n,
+                                  trigger_cfg <= trigger_cfg,
+                                  halt_trigger <= p34_combs.halt_capture,
+                                  trigger_ctl => trigger_ctl
+            );
+    }
+
+    /*b Trigger cfg breakout
+    */
+    trigger_cfg_breakout: {
+        if (trigger_cfg_in.enable || trigger_cfg.enable) {
+            trigger_cfg <= trigger_cfg_in;
+        }
+
+        trigger_cfg_actions[0] = trigger_cfg.actions_0;
+        trigger_cfg_actions[1] = trigger_cfg.actions_1;
+        trigger_cfg_actions[2] = trigger_cfg.actions_2;
+        trigger_cfg_actions[3] = trigger_cfg.actions_3;
+        trigger_cfg_actions[4] = trigger_cfg.actions_4;
+        trigger_cfg_actions[5] = trigger_cfg.actions_5;
+        trigger_cfg_actions[6] = trigger_cfg.actions_6;
+        trigger_cfg_actions[7] = trigger_cfg.actions_7;
+
+        trigger_cfg_ds[0] = trigger_cfg.data_src_0;
+        trigger_cfg_ds[1] = trigger_cfg.data_src_1;
+
+        trigger_cfg_match_ds[0] = trigger_cfg.match_data_src_0;
+        trigger_cfg_match_ds[1] = trigger_cfg.match_data_src_1;
+
+        trigger_cfg_trace_ds[0] = trigger_cfg.trace_data_source_0;
+        trigger_cfg_trace_ds[1] = trigger_cfg.trace_data_source_1;
+    }
+
+    /*b Timer value state
+     */
+    timer_value_logic "Timer value logic": {
+        timer_combs.value = timer_value.value[32;0];
+        full_switch (trigger_cfg.timer_div) {
+        case 2b00: {
+            timer_combs.value = timer_value.value[32;0];
+        }
+        case 2b01: {
+            timer_combs.value = timer_value.value[32;8];
+        }
+        case 2b10: {
+            timer_combs.value = timer_value.value[32;16];
+        }
+        case 2b11: {
+            timer_combs.value = timer_state.value+1;
+        }
+        }
+        timer_combs.timer_delta = timer_combs.value - timer_state.recorded_value.data;
+
+        timer_state.value <= timer_combs.value;
+        if (timer_state.recorded_value.valid) {
+            timer_state.timer_delta <= timer_combs.timer_delta;
+        }
+
+        if (p34_combs.record_time) {
+            timer_state.recorded_value.valid <= 1;
+            timer_state.recorded_value.data <= timer_combs.value;
+            timer_state.timer_delta <= 0;
+        }
+
+        if (trigger_cfg.clear) {
+            timer_state <= {*=0};
+        }
+
+        if (!trigger_cfg.enable && !trigger_cfg.clear) {
+            timer_state <= timer_state;
+        }
+
+    }
+
+    /*b Data pipeline
+     */
+    data_pipeline "Data pipeline": {
+        if (din.valid || data[0].valid) {
+            data[0].valid <= 0;
+            if (trigger_cfg.enable) {
+                data[0] <= din;
+            }
+        }
+
+        for (i; 3) {
+            if (data[i].valid || data[i+1].valid) {
+                data[i+1].valid <= 0;
+                if (data[i].valid) {
+                    data[i+1] <= data[i];
+                }
+            }
+        }
+    }
+
+    /*b P0 to P1 logic; select data for matches
+     */
+    p01_logic "P0 to P1 logic; select data for matches": {
+        //
+        // Support no match in shadow of match for up to 4 cycles? 
+        //
+        // Data usage models:
+        //
+        // timer value => sample every 1<<n ticks
+        //
+        // timer value, timer delta => capture for m ns every 1<<n ticks
+        //
+        // time value, data word => sample every 1<<n ticks if condition
+        //
+        // data word, timer delta => capture for m ns after a trigger
+        // 
+        // word[0], word[1] => multiple matches
+        // 
+        // word[0], recorded data => record data on match of word[0], ??
+        // 
+        // word[0], word[0]^recorded data => record data on match of word[0], ??
+        // 
+        p01_combs.data_word[0] = 0;
+        p01_combs.data_word[1] = 0;
+        for (i; 2) {
+            full_switch (trigger_cfg_ds[i]) {
+            case 0: { p01_combs.data_word[i] = data[0].data_0; }
+            case 1: { p01_combs.data_word[i] = data[0].data_1; }
+            case 2: { p01_combs.data_word[i] = data[0].data_2; }
+            case 3: { p01_combs.data_word[i] = data[0].data_3; }
+            }
+        }
+        full_switch (trigger_cfg_match_ds[0]) {
+            case 0: { p01_combs.match_data_0 = {valid=timer_state.recorded_value.valid, data=timer_state.value}; }
+            case 1: { p01_combs.match_data_0 = {valid=timer_state.recorded_value.valid, data=timer_state.timer_delta}; }
+            case 2: { p01_combs.match_data_0 = recorded_data; }
+            case 3: { p01_combs.match_data_0 = {valid=recorded_data.valid, data=p01_combs.data_word[0] ^ recorded_data.data }; }
+            default: { p01_combs.match_data_0 = {valid=data[0].valid, data=p01_combs.data_word[0]}; }
+        }
+        full_switch (trigger_cfg_match_ds[1]) {
+            case 0: { p01_combs.match_data_1 = {valid=timer_state.recorded_value.valid, data=timer_state.value}; }
+            case 1: { p01_combs.match_data_1 = {valid=timer_state.recorded_value.valid, data=timer_state.timer_delta}; }
+            case 2: { p01_combs.match_data_1 = recorded_data; }
+            case 3: { p01_combs.match_data_1 = {valid=recorded_data.valid, data=p01_combs.data_word[0] ^ recorded_data.data}; }
+            default: { p01_combs.match_data_1 = {valid=data[0].valid, data=p01_combs.data_word[1]}; }
+        }
+
+        p1_state.match_data_0 <= p01_combs.match_data_0;
+        p1_state.match_data_1 <= p01_combs.match_data_1;
+
+        // Possibly set p1_state.in_shadow_of_match[]
+    }
+
+    /*b Trigger byte matching and combining
+     *
+     * Selects data from data[0]
+     *
+     * Performs match on selected data
+     *
+     * Registers match valid with data[1]
+     *
+     * Produces match_conds valid with data[1]
+     *
+     */
+    trigger_byte "Trigger byte matching": {
+        p2_state.match_data <= p1_state.match_data_0;
+
+        analyzer_trigger_simple_byte t0( clk <- clk, reset_n <= reset_n,
+                                         match_data_0 <= p1_state.match_data_0,
+                                         match_data_1 <= p1_state.match_data_1,
+                                         matched => p2_matched[0],
+                                         trigger_cfg_byte <= trigger_cfg.tb_0);
+        analyzer_trigger_simple_byte t1( clk <- clk, reset_n <= reset_n,
+                                         match_data_0 <= p1_state.match_data_0,
+                                         match_data_1 <= p1_state.match_data_1,
+                                         matched => p2_matched[1],
+                                         trigger_cfg_byte <= trigger_cfg.tb_1);
+        analyzer_trigger_simple_byte t2( clk <- clk, reset_n <= reset_n,
+                                         match_data_0 <= p1_state.match_data_0,
+                                         match_data_1 <= p1_state.match_data_1,
+                                         matched => p2_matched[2],
+                                         trigger_cfg_byte <= trigger_cfg.tb_2);
+        analyzer_trigger_simple_byte t3( clk <- clk, reset_n <= reset_n,
+                                         match_data_0 <= p1_state.match_data_0,
+                                         match_data_1 <= p1_state.match_data_1,
+                                         matched => p2_matched[3],
+                                         trigger_cfg_byte <= trigger_cfg.tb_3);
+
+        p23_combs.action_set = trigger_cfg.action_set;
+        if (p2_matched[3]) { p23_combs.action_set[24;0] = p23_combs.action_set[24;24]; }
+        if (p2_matched[2]) { p23_combs.action_set[12;0] = p23_combs.action_set[12;12]; }
+        if (p2_matched[1]) { p23_combs.action_set[ 6;0] = p23_combs.action_set[ 6; 6]; }
+        if (p2_matched[0]) { p23_combs.action_set[ 3;0] = p23_combs.action_set[ 3; 3]; }
+
+        p3_state.capture_actions <= trigger_cfg_actions[p23_combs.action_set[3;0]];
+        p3_state.match_data <= p2_state.match_data;
+     }
+
+    /*b Record data
+     */
+    record_data_logic "Record the data": {
+        p34_combs.record_data = p3_state.capture_actions.record_data;
+        p34_combs.record_invalidate = p3_state.capture_actions.record_invalidate;
+        p34_combs.halt_capture = p3_state.capture_actions.halt_capture;
+        p34_combs.record_time = p3_state.capture_actions.record_time;
+        p34_combs.capture_data = p3_state.capture_actions.capture_data;
+
+        if (p34_combs.record_invalidate) {
+            recorded_data.valid <= 0;
+        }
+        if (p34_combs.record_data) {
+            recorded_data.valid <= 1;
+            recorded_data.data <= p3_state.match_data.data;
+        }
+    }
+    
+    /*b Data output generation (and recording for deltas)
+     *
+     * With dynamic data we can select start time and time delta in a trace; data_0 at start, data_1 at end
+     *
+     *
+     *
+     */
+    data_out_generation "Data out generation": {
+        trace_op.op_valid <= 0;
+        trace_op.op_valid[0] <= p34_combs.capture_data[0];
+        trace_op.op_valid[1] <= p34_combs.capture_data[1];
+        if (p34_combs.capture_data[0]) {
+            trace_op.op_0 <= trigger_cfg.trace_op_0;
+        }
+        if (p34_combs.capture_data[1]) {
+            trace_op.op_1 <= trigger_cfg.trace_op_1;
+        }
+
+        for (i; 2) {
+            full_switch (trigger_cfg_trace_ds[i]) {
+            case atc_trace_data_source_timer: {
+                data_out[i] <= timer_state.value;
+            }
+            case atc_trace_data_source_timer_delta: {
+                data_out[i] <= timer_combs.timer_delta;
+            }
+            case atc_trace_data_source_rd: {
+                data_out[i] <= recorded_data.data;
+            }
+            case atc_trace_data_source_din_0: {
+                data_out[i] <= data[3].data_0;
+            }
+            case atc_trace_data_source_din_1: {
+                data_out[i] <= data[3].data_1;
+            }
+            }
+        }
+        
+        if (!trigger_cfg.enable || trace_op.op_valid!=0) {
+            trace_op <= trace_op;
+            trace_op.op_valid <= {*=0};
+            data_out[0] <= data_out[0];
+            data_out[1] <= data_out[1];
+            data_out[2] <= data_out[2];
+            data_out[3] <= data_out[3];
+        }
+
+        dout.data_0 = data_out[0];
+        dout.data_1 = data_out[1];
+        dout.data_2 = 0;
+        dout.data_3 = 0;
+        dout.valid = data[3].valid;
+    }
+    
+    /*b Done
+     */
+}

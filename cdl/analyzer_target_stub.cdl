@@ -42,16 +42,17 @@ module analyzer_target_stub( clock clk,
 
     /*b APB interface state  */
     net t_analyzer_tgt analyzer_tgt;
-    clocked t_analyzer_data analyzer_data = {*=0};
+    clocked t_analyzer_data4 analyzer_data = {*=0};
 
-    /*b Blah */
-    blah : {
+    /*b Stub target */
+    stub_target : {
         analyzer_data <= {*=0};
         analyzer_target stub( clk<-clk, reset_n<=reset_n,
                               analyzer_mst <= analyzer_mst,
                               analyzer_tgt => analyzer_tgt,
                               // analyzer_ctl =>
-                              analyzer_data <= analyzer_data );
+                              analyzer_data <= analyzer_data,
+                              analyzer_tgt_id <= 32h0000_dead);
     }
 
     /*b All done */

@@ -1,0 +1,84 @@
+@c00200
+-Access Req
+@28
+dut.access_req__read_enable
+dut.access_req__write_enable
+dut.access_req__address_op[2:0]
+dut.access_req__alu_op[3:0]
+dut.access_req__byte_of_sram[1:0]
+dut.access_req__id[1:0]
+@22
+dut.access_req__address[10:0]
+dut.access_req__op_data[31:0]
+@1400200
+-Access Req
+
+@c00200
+-Access Resp
+@22
+dut.access_resp__data[31:0]
+@28
+dut.access_resp__id[1:0]
+dut.access_resp__valid
+@1400200
+-Access Resp
+
+@c00200
+-Fifo combs
+@28
+dut.fifo_combs__pop
+dut.fifo_combs__push
+dut.fifo_combs__can_push
+dut.fifo_combs__push_journal_full
+dut.fifo_combs__reset_ptrs
+@22
+dut.fifo_combs__ptr_inc[13:0]
+@1400200
+-Fifo combs
+
+@c00200
+-Fifo state
+@28
+dut.fifo_state__not_empty
+dut.fifo_state__full
+@22
+dut.fifo_state__read_ptr[13:0]
+dut.fifo_state__write_ptr[13:0]
+dut.fifo_state__num_entries[13:0]
+@1400200
+-Fifo state
+
+@c00200
+-Sram Write
+@28
+dut.trace_sram.select_0
+@22
+dut.trace_sram.address_0[10:0]
+dut.trace_sram.write_data_0[31:0]
+@1400200
+-Sram Write
+
+@c00200
+-Sram Read
+@28
+dut.trace_sram.select_1
+@22
+dut.trace_sram.address_1[10:0]
+dut.trace_sram.data_out_1[31:0]
+@1400200
+-Sram Read
+
+@c00200
+-Alu state
+@28
+dut.alu_state__byte_of_sram[1:0]
+dut.alu_state__id[1:0]
+dut.alu_state__valid
+dut.alu_state__write_enable
+@22
+dut.alu_state__address[10:0]
+dut.alu_state__alu_op[3:0]
+dut.alu_state__op_data[31:0]
+dut.alu_state__mem_data[31:0]
+@1400200
+-Alu state

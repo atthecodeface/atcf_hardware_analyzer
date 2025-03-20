@@ -1,0 +1,492 @@
+/*a Includes
+ */
+include "analyzer.h"
+include "analyzer_trace_ram.h"
+include "utils::fifo_status.h"
+include "clocking::clock_timer.h"
+include "std::srams.h"
+include "std::valid_data.h"
+
+/*a Constants
+ */
+constant integer disable_alu_ops = 0 "Set this to 1 to disable ALU operation suppprt";
+constant integer sram_address_width = 11;
+constant integer full_byte_address_width = sram_address_width+3; // 4 bytes per word, 2 SRAM paths supported
+
+/*a Types */
+/*t t_word_address */
+typedef bit[sram_address_width] t_word_address;
+
+/*t t_full_byte_address */
+typedef bit[full_byte_address_width] t_full_byte_address;
+
+/*t t_data_combs
+ */
+typedef struct
+{
+    bit[32] p0_data_in;
+    bit[33] p0_data_value "Data in minus base";
+
+    bit     p1_data_is_neg;
+    bit[32] p1_data_shf;
+    bit[64] p1_data_mask;
+    bit[32] p1_data_result;
+    bit[32] p1_data_unused;
+
+} t_data_combs;
+
+/*t t_data_state
+ */
+typedef struct
+{
+    bit[33] p1_data_value "Data in minus base";
+
+    bit[32] p2_data_value;
+} t_data_state;
+
+/*t t_fifo_state
+ */
+typedef struct
+{
+    t_full_byte_address read_ptr;
+    t_full_byte_address write_ptr;
+    t_full_byte_address num_entries;
+    bit     full;
+    bit     not_empty;
+    bit pushed;
+    bit popped;
+    bit overflowed;
+    bit underflowed;
+} t_fifo_state;
+
+/*t t_fifo_combs
+ */
+typedef struct
+{
+    bit can_push;
+    bit push;
+    bit pop;
+    bit push_journal_full;
+    bit nearly_full;
+    bit reset_ptrs;
+    t_full_byte_address ptr_inc;
+} t_fifo_combs;
+
+/*t t_access_combs
+ */
+typedef struct
+{
+    bit            read_enable;
+    bit            write_enable;
+    bit[2]         id;
+    t_analyzer_trace_address_op   address_op;
+    bit[32]        op_data;
+    t_word_address   address;
+    t_atr_alu_op   alu_op;
+    bit[2]         byte_of_sram;
+} t_access_combs;
+
+/*t t_reading_state
+ */
+typedef struct
+{
+    bit     valid;
+    bit[2]  id;
+    bit access_in_progress "Asserted if a read or write access is in the reading stage";
+    bit[32] op_data;
+    t_word_address address;
+    t_atr_alu_op alu_op;
+    bit     write_enable;
+    bit[2]  byte_of_sram;
+    bit fwd_from_alu;
+    bit fwd_from_writeback;
+} t_reading_state;
+
+/*t t_alu_state
+ */
+typedef struct
+{
+    bit     valid;
+    bit[2]  id;
+    bit[32] mem_data;
+    bit[32] op_data;
+    t_atr_alu_op alu_op;
+    bit     write_enable;
+    t_word_address address;
+    bit[2]  byte_of_sram;
+} t_alu_state;
+
+/*t t_alu_combs
+ */
+typedef struct
+{
+    bit[17] alu_add16;
+    bit[33] alu_add32;
+    bit[33] alu_cmp32;
+    bit[17] alu_cmp16_l;
+    bit[17] alu_cmp16_h;
+    bit[32] write_byte_result;
+    bit[32] alu_result;
+    bit[32] result;
+} t_alu_combs;
+
+/*t t_writeback_state
+ */
+typedef struct
+{
+    bit     write_enable;
+    t_word_address address;
+    bit[32] data;
+} t_writeback_state;
+
+/*a Module
+ */
+module analyzer_trace_ram_data_path( clock clk,
+                                     input bit reset_n,
+
+                                     input t_analyzer_trace_access_req access_req,
+                                     output t_analyzer_trace_access_resp access_resp,
+
+                                     output t_fifo_status fifo_status,
+                                     input  t_analyzer_trace_cfg_fifo trace_cfg_fifo
+ )
+"""
+"""
+
+{
+    /*b Default clock and reset
+     */
+    default clock clk;
+    default reset active_low reset_n;
+
+    /*b State and combs */
+    clocked t_fifo_state fifo_state = {*=0};
+    comb t_fifo_combs fifo_combs;
+    comb t_access_combs access_combs;
+    
+    clocked t_reading_state reading_state = {*=0};
+    
+    clocked t_alu_state alu_state = {*=0};
+    comb t_alu_combs alu_combs;
+    
+    clocked t_writeback_state writeback_state = {*=0};
+
+    clocked t_vdata_32 write_over_read_data = {*=0};
+    
+    clocked t_analyzer_trace_access_resp access_resp = {*=0} "Valid with writeback";
+
+    net bit[32] sram_read_data;
+
+    /*b Fifo ptr logic
+     */
+    fifo_ptr_logic: {
+            fifo_combs.can_push = 0;
+            fifo_combs.ptr_inc = 4;
+            if (trace_cfg_fifo.data_width==1) {
+                fifo_combs.ptr_inc = 1;
+            } elsif (trace_cfg_fifo.data_width==2) {
+                fifo_combs.ptr_inc = 2;
+            }
+            if (trace_cfg_fifo.enable_push) {
+                if (!fifo_state.full || trace_cfg_fifo.journal) {
+                    fifo_combs.can_push = 1;
+                }
+            }
+
+        fifo_combs.push = 0;
+        fifo_combs.pop = 0;
+        fifo_combs.reset_ptrs = 0;
+        full_switch (access_req.address_op) {
+        case atr_address_op_reset_ptrs: {
+            fifo_combs.reset_ptrs = 1;
+        }
+        case atr_address_op_push: {
+            fifo_combs.push = fifo_combs.can_push;
+        }
+        case atr_address_op_pop: {
+            fifo_combs.pop = fifo_state.not_empty;
+            if (!fifo_state.not_empty) {
+                fifo_state.underflowed <= 1;
+            }
+        }
+        }
+        fifo_combs.nearly_full = fifo_state.num_entries[11;3] == -1;
+        if (trace_cfg_fifo.fifo_per_ram) {
+            fifo_combs.nearly_full = fifo_state.num_entries[11;2] == -1;
+        }
+            fifo_combs.push_journal_full = 0;
+            if (fifo_combs.push) {
+                if (fifo_state.full && trace_cfg_fifo.journal) {
+                    fifo_combs.push_journal_full = 1;
+                }
+            }
+
+            if (fifo_combs.pop || fifo_combs.push_journal_full) {
+                fifo_state.read_ptr <= fifo_state.read_ptr + fifo_combs.ptr_inc;
+            }
+            if (fifo_combs.push) {
+                fifo_state.write_ptr <= fifo_state.write_ptr + fifo_combs.ptr_inc;
+            }
+            if (fifo_combs.pop && fifo_combs.push) {
+                fifo_state.num_entries <= fifo_state.num_entries;
+            } elsif (fifo_combs.pop) {
+                fifo_state.num_entries <= fifo_state.num_entries - fifo_combs.ptr_inc;
+                fifo_state.not_empty <= (fifo_state.num_entries != fifo_combs.ptr_inc);
+                fifo_state.full <= 0;
+            } elsif (fifo_combs.push && !fifo_combs.push_journal_full) {
+                fifo_state.num_entries <= fifo_state.num_entries + fifo_combs.ptr_inc;
+                fifo_state.not_empty <= 1;
+                fifo_state.full <= fifo_combs.nearly_full;
+            }
+            fifo_state.popped <= fifo_combs.pop;
+            fifo_state.pushed <= fifo_combs.push;
+            if (fifo_combs.reset_ptrs) {
+                fifo_state.overflowed <= 0;
+                fifo_state.underflowed <= 0;
+                fifo_state.num_entries <= 0;
+                fifo_state.not_empty <= 0;
+                fifo_state.full <= 0;
+                fifo_state.write_ptr <= 0;
+                fifo_state.read_ptr <= 0;
+        }
+    }
+
+    /*b Reading stage - hold state for ALU operation
+     */
+    reading_stage "Reading stage registers": {
+
+        access_combs.read_enable = access_req.read_enable;
+        access_combs.write_enable = access_req.write_enable;
+        access_combs.id = access_req.id;
+        access_combs.address_op = access_req.address_op;
+        access_combs.op_data = access_req.op_data;
+        access_combs.address = 0;
+        access_combs.address[sram_address_width;0] = access_req.word_address[sram_address_width;0];
+        access_combs.alu_op = access_req.alu_op;
+        access_combs.byte_of_sram = access_req.byte_of_sram;
+        full_switch (access_req.address_op) {
+        case atr_address_op_push: {
+            if (!fifo_combs.push) {
+                access_combs.write_enable = 0;
+            }
+            access_combs.address = 0;
+            access_combs.address[sram_address_width;0] = fifo_state.write_ptr[sram_address_width;2];
+            access_combs.byte_of_sram = fifo_state.write_ptr[2;0];
+        }
+        case atr_address_op_pop: {
+            access_combs.address = 0;
+            access_combs.address[sram_address_width;0] = fifo_state.read_ptr[sram_address_width;2];
+            access_combs.byte_of_sram = fifo_state.read_ptr[2;0];
+        }
+        }
+
+        reading_state.valid <= access_combs.read_enable || access_combs.write_enable;
+        reading_state.id <= access_combs.id;
+        reading_state.op_data <= access_combs.op_data;
+        reading_state.alu_op <= access_combs.alu_op;
+        reading_state.write_enable <= access_combs.write_enable;
+        reading_state.address <= access_combs.address;
+        reading_state.byte_of_sram <= access_combs.byte_of_sram;
+        reading_state.fwd_from_alu <= 0;
+        reading_state.fwd_from_writeback <= 0;
+
+        if ((access_combs.address == reading_state.address) &&
+            reading_state.write_enable) {
+            reading_state.fwd_from_alu <= 1;
+        }
+        if ((access_combs.address == alu_state.address) &&
+            alu_state.write_enable) {
+            reading_state.fwd_from_writeback <= 1;
+        }
+        if (!access_combs.read_enable && !access_combs.write_enable && !reading_state.valid) {
+            reading_state <= reading_state;
+        }
+    }
+
+    /*b ALU operation on registered read data
+     */
+    alu_operation: {
+        /*b Write byte result - for 8/16/32 bit data */
+        alu_combs.write_byte_result = 0;
+        if (alu_state.alu_op == atr_alu_op_write8) {
+            alu_combs.write_byte_result = alu_state.mem_data;
+            full_switch (alu_state.byte_of_sram) {
+            case 0: {
+                alu_combs.write_byte_result[8;0] = alu_state.op_data[8;0];
+            }
+            case 1: {
+                alu_combs.write_byte_result[8;8] = alu_state.op_data[8;0];
+            }
+            case 2: {
+                alu_combs.write_byte_result[8;16] = alu_state.op_data[8;0];
+            }
+            case 3: {
+                alu_combs.write_byte_result[8;24] = alu_state.op_data[8;0];
+            }
+            }
+        } elsif (alu_state.alu_op == atr_alu_op_write16) {
+            alu_combs.write_byte_result = alu_state.mem_data;
+            if (alu_state.byte_of_sram[1]) {
+                alu_combs.write_byte_result[16;16] = alu_state.op_data[16;0];
+            } else {
+                alu_combs.write_byte_result[16;0] = alu_state.op_data[16;0];
+            }
+        } elsif (alu_state.alu_op == atr_alu_op_write32) {
+            alu_combs.write_byte_result = alu_state.op_data;
+        }
+
+        /*b Do ALU operations result */
+        alu_combs.alu_result = 0;
+        alu_combs.alu_add16 = bundle(1b0, alu_state.mem_data[16;0]) + bundle(1b0, alu_state.op_data[16;0]);
+        alu_combs.alu_add32 = bundle(1b0, alu_state.mem_data[32;0]) + bundle(1b0, alu_state.op_data[32;0]);
+        alu_combs.alu_cmp32 = bundle(1b0, alu_state.mem_data[32;0]) - bundle(1b0, alu_state.op_data[32;0]);
+        alu_combs.alu_cmp16_l = bundle(1b0, alu_state.mem_data[16;0]) - bundle(1b0, alu_state.op_data[16;0]);
+        alu_combs.alu_cmp16_h = bundle(1b0, alu_state.mem_data[16;16]) - bundle(1b0, alu_state.op_data[16;0]);
+        full_switch (alu_state.alu_op) {
+        case atr_alu_op_inc32: {
+            if (alu_state.mem_data != -1) {
+                alu_combs.alu_result = alu_state.mem_data+1;
+            }
+        }
+        case atr_alu_op_sum32: {
+            alu_combs.alu_result = alu_combs.alu_add32[32;0];
+            if (alu_combs.alu_add32[32]) {
+                alu_combs.alu_result = -1;
+            }
+        }
+        case atr_alu_op_min32: {
+            alu_combs.alu_result = alu_state.mem_data;
+            if (!alu_combs.alu_cmp32[32]) { // op < mem
+                alu_combs.alu_result = alu_state.op_data;
+            }
+        }
+        case atr_alu_op_max32: {
+            alu_combs.alu_result = alu_state.mem_data;
+            if (alu_combs.alu_cmp32[32]) { // op >= mem
+                alu_combs.alu_result = alu_state.op_data;
+            }
+        }
+        case atr_alu_op_min_max16: {
+            alu_combs.alu_result = alu_state.mem_data;
+            if (!alu_combs.alu_cmp16_l[16]) { // op < mem
+                alu_combs.alu_result[16;0] = alu_state.op_data[16;0];
+            }
+            if (alu_combs.alu_cmp16_h[16]) { // op >= mem
+                alu_combs.alu_result[16;16] = alu_state.op_data[16;0];
+            }
+        }
+        case atr_alu_op_inc16_add16: {
+            if (alu_state.mem_data[16;16] != -1) {
+                alu_combs.alu_result[16;16] = alu_state.mem_data[16;16]+1;
+            }
+            alu_combs.alu_result[16;0] = alu_combs.alu_add16[16;0];
+            if (alu_combs.alu_add16[16]) {
+                alu_combs.alu_result[16;0] = -1;
+            }
+        }
+        default: { // includes clear
+            alu_combs.alu_result = 0;
+        }
+        }
+
+        /*b Cancel alu operations if not configured
+         */
+        if (disable_alu_ops) {
+            alu_combs.alu_result = 0;
+        }
+
+        /*b Store state */
+        alu_combs.result = alu_combs.write_byte_result | alu_combs.alu_result;
+        alu_state.valid <= reading_state.valid;
+        alu_state.id <= reading_state.id;
+        alu_state.op_data <= reading_state.op_data;
+        alu_state.alu_op <= reading_state.alu_op;
+        alu_state.write_enable <= reading_state.write_enable;
+        alu_state.address <= reading_state.address;
+        alu_state.byte_of_sram <= reading_state.byte_of_sram;
+
+        alu_state.mem_data <= sram_read_data;
+        if (write_over_read_data.valid) {
+            alu_state.mem_data <= write_over_read_data.data;
+        }
+        if (reading_state.fwd_from_writeback) {
+            alu_state.mem_data <= writeback_state.data;
+        }
+        if (reading_state.fwd_from_alu) {
+            alu_state.mem_data <= alu_combs.result;
+        }
+
+    }
+
+    /*b Writeback stage
+     */
+    writeback_stage : {
+        /*b Store state */
+        writeback_state.write_enable <= alu_state.write_enable;
+        writeback_state.address <= alu_state.address;
+        writeback_state.data <= alu_combs.result;
+
+        write_over_read_data.valid <= 0;
+        if (writeback_state.write_enable && access_combs.read_enable) {
+            if (writeback_state.address == access_combs.address) {
+                write_over_read_data.valid <= 1;
+                write_over_read_data.data <= writeback_state.data;
+            }
+        }
+
+    }
+
+    /*b SRAM datapath
+     */
+     store_data "Store data in FIFO and read out":
+        {
+                se_sram_mrw_2_2048x32 trace_sram( sram_clock_0 <- clk,
+                                                  select_0         <= writeback_state.write_enable,
+                                                  read_not_write_0 <= 0,
+                                                  address_0        <= writeback_state.address,
+                                                  write_data_0     <= writeback_state.data,
+                                                  // data_out_0 =>,
+                                                  sram_clock_1 <- clk,
+                                                  select_1         <= access_combs.read_enable,
+                                                  read_not_write_1 <= 1,
+                                                  address_1        <= access_combs.address,
+                                                  write_data_1     <= 0,
+                                                  data_out_1       => sram_read_data );
+
+                access_resp.valid <= alu_state.valid;
+                access_resp.id <= alu_state.id;
+                full_switch (alu_state.byte_of_sram) {
+                    case 2b00: {
+                        access_resp.data <= alu_state.mem_data;
+                    }
+                    case 2b01: {
+                        access_resp.data <= bundle(alu_state.mem_data[8;8],alu_state.mem_data[8;8],
+                                                   alu_state.mem_data[8;8],alu_state.mem_data[8;8]);
+                    }
+                    case 2b10: {
+                        access_resp.data <= bundle(alu_state.mem_data[16;16],alu_state.mem_data[16;16]);
+                    }
+                    case 2b11: {
+                        access_resp.data <= bundle(alu_state.mem_data[8;24],alu_state.mem_data[8;24],
+                                                   alu_state.mem_data[8;24],alu_state.mem_data[8;24]);
+                    }
+                }
+        }
+
+    /*b Fifo status
+     */
+    fifo_status_logic : {
+        fifo_status = {*=0};
+        fifo_status.pushed = fifo_state.pushed;
+        fifo_status.popped = fifo_state.popped;
+        fifo_status.overflowed = fifo_state.overflowed;
+        fifo_status.underflowed = fifo_state.underflowed;
+        fifo_status.empty = !fifo_state.not_empty;
+        fifo_status.full = fifo_state.full;
+        fifo_status.entries_full[14;0] = fifo_state.num_entries;
+        // bit[32] spaces_available;
+    }
+
+    /*b Done
+     */
+}

@@ -1,0 +1,58 @@
+/*a Includes
+ */
+include "analyzer.h"
+include "analyzer_trigger.h"
+
+/*a Module
+ */
+module analyzer_trigger_control( clock clk,
+                                 input bit reset_n,
+
+                                 input  t_analyzer_trigger_cfg trigger_cfg,
+                                 input bit halt_trigger,
+                                 output t_analyzer_trigger_ctl trigger_ctl
+ )
+"""
+This module captures the basic trigger control
+"""
+
+{
+    /*b Default clock and reset
+     */
+    default clock clk;
+    default reset active_low reset_n;
+
+    /*b State and combs */
+    clocked t_analyzer_trigger_ctl trigger_ctl = {*=0};
+
+    /*b Trigger control logic
+    */
+    trigger_ctl_logic: {
+        trigger_ctl.clear <= trigger_cfg.clear;
+        
+        if (halt_trigger && trigger_ctl.running) {
+            trigger_ctl.running <= 0;
+        }
+        if (trigger_cfg.start && !trigger_ctl.clear) {
+            trigger_ctl.running <= 1;
+        }
+        if (trigger_cfg.stop) {
+            trigger_ctl.running <= 0;
+        }
+        
+        if (!trigger_cfg.enable) {
+            trigger_ctl <= {*=0};
+        }
+
+        if (!trigger_ctl.enable) {
+            trigger_ctl <= trigger_ctl;
+            if (trigger_cfg.enable) {
+                trigger_ctl.enable <= 1;
+            }
+        }
+
+    }
+    
+    /*b Done
+     */
+}

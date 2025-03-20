@@ -1,0 +1,79 @@
+include "apb::apb.h"
+include "analyzer.h"
+include "analyzer_modules.h"
+module tb_analyzer_ctl( clock clk,
+                        input bit reset_n,
+                        
+                        input  t_apb_request  apb_request  "APB request",
+                        output t_apb_response apb_response "APB response",
+                        output t_analyzer_data4 analyzer_data4
+    )
+{
+    net t_apb_response apb_response;
+
+    net t_analyzer_mst analyzer_mst;
+    net t_analyzer_tgt analyzer_tgt;
+
+    net t_analyzer_mst[8] mst;
+    net t_analyzer_tgt[8] tgt;
+    net t_analyzer_ctl[8] ctl;
+
+    comb t_analyzer_data4[8] analyzer_data;
+    modules: {
+        for (i; 8) {
+            analyzer_data[i] = {*=0};
+            analyzer_data[i].valid = 1;
+            analyzer_data[i].data_0 = i;
+            analyzer_data[i].data_1 = ctl[i].mux_control;
+        }
+        analyzer_data4 = analyzer_tgt.data;
+        apb_target_analyzer_ctl dut( clk <- clk,
+                                     reset_n <= reset_n,
+                                     apb_request <= apb_request,
+                                     apb_response => apb_response,
+                                     analyzer_mst => analyzer_mst,
+                                     analyzer_tgt <= analyzer_tgt
+            );
+
+        analyzer_mux_8 mux( clk <- clk, reset_n <= reset_n,
+                            analyzer_mst <= analyzer_mst,
+                            analyzer_tgt => analyzer_tgt,
+
+                            analyzer_mst_a => mst[0],
+                            analyzer_tgt_a <= tgt[0],
+
+                            analyzer_mst_b => mst[1],
+                            analyzer_tgt_b <= tgt[1],
+
+                            analyzer_mst_c => mst[2],
+                            analyzer_tgt_c <= tgt[2],
+
+                            analyzer_mst_d => mst[3],
+                            analyzer_tgt_d <= tgt[3],
+
+                            analyzer_mst_e => mst[4],
+                            analyzer_tgt_e <= tgt[4],
+
+                            analyzer_mst_f => mst[5],
+                            analyzer_tgt_f <= tgt[5],
+
+                            analyzer_mst_g => mst[6],
+                            analyzer_tgt_g <= tgt[6],
+
+                            analyzer_mst_h => mst[7],
+                            analyzer_tgt_h <= tgt[7]
+            );
+
+        for (i; 8) {
+            analyzer_target tgt[i]( clk <- clk, reset_n <= reset_n,
+                                    analyzer_mst <= mst[i],
+                                    analyzer_tgt => tgt[i],
+                              
+                                    analyzer_ctl => ctl[i],
+                                    analyzer_data <= analyzer_data[i],
+
+                                    analyzer_tgt_id <= i
+                );
+        }
+    }
+}
