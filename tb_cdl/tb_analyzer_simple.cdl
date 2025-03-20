@@ -1,0 +1,67 @@
+include "utils::fifo_status.h"
+include "apb::apb.h"
+include "apb::apb.h"
+include "analyzer.h"
+include "analyzer_modules.h"
+include "clocking::clock_timer.h"
+include "clocking::clock_timer_modules.h"
+include "tb_analyzer_modules.h"
+module tb_analyzer_simple( clock clk,
+                    input bit reset_n,
+                        
+                    input  t_apb_request  apb_request  "APB request",
+                    output t_apb_response apb_response "APB response",
+                    output t_analyzer_data4 analyzer_data4
+
+    )
+{
+    net t_analyzer_mst analyzer_mst;
+    net t_analyzer_tgt analyzer_tgt;
+
+    default clock clk;
+    default reset active_low reset_n;
+
+    comb  t_timer_control_full timer_ctl;
+    net t_timer_value  timer_value;
+    
+    comb  t_apb_request  apb_request_dut  "APB request to target dut";
+    comb  t_apb_request  apb_request_src  "APB request to target src";
+    net t_apb_response apb_response_dut "APB response from target dut";
+    net t_apb_response apb_response_src "APB response from target src";
+
+    modules: {
+        apb_response = {*=0};
+        apb_response |= apb_response_dut;
+        apb_response |= apb_response_src;
+
+        apb_response.pready = (apb_response_src.pready &&
+                               apb_response_dut.pready);
+
+        apb_request_dut = apb_request;
+        apb_request_src = apb_request;
+        apb_request_src.psel = apb_request.psel && (apb_request.paddr[2;6] == 2b11);
+
+        analyzer_data4 = analyzer_tgt.data;
+
+        timer_ctl = {*=0};
+
+        clock_timer clk_timer( clk<-clk, reset_n<=reset_n,
+                               timer_control <= timer_ctl,
+                               timer_value => timer_value);
+
+        tb_apb_target_analyzer_src src( clk <- clk, reset_n <= reset_n,
+                                     apb_request <= apb_request_src,
+                                     apb_response => apb_response_src,
+                             analyzer_mst <= analyzer_mst,
+                             analyzer_tgt => analyzer_tgt
+            );
+        analyzer_simple dut( clk <- clk, reset_n <= reset_n,
+                             apb_request <= apb_request_dut,
+                             apb_response => apb_response_dut,
+                             timer_value <= timer_value,
+                             analyzer_mst => analyzer_mst,
+                             analyzer_tgt <= analyzer_tgt
+            );
+
+    }
+}

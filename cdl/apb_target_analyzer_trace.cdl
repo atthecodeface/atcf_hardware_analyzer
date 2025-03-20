@@ -248,7 +248,7 @@ This module provides trace access for logic analyzers from APB.
 
         if (trace_access_rdy && apb_state.op_pending) {
             apb_state.op_pending <= 0;
-            apb_state.result_pending <= 1;
+            apb_state.result_pending <= apb_state.req.read_enable;
         }
         
         if (trace_access_resp.valid && (trace_access_resp.id==2b10)) {

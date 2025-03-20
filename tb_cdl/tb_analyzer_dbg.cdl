@@ -118,6 +118,7 @@ module tb_analyzer_dbg( clock clk,
                                   data1 <= 0,
                                   data2 <= 0,
                                   data3 <= 0,
+                                  data4 <= 0,
                                   pop_rdy <= trace_access_rdy,
                                   data_valid <= trace_access_resp.valid && (trace_access_resp.id==2b11),
                                   pop_fifo => dbg_pop_fifo

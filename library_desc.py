@@ -39,6 +39,7 @@ class ApbTargetModules(cdl_desc.Modules):
     cdl_include_dirs = ["cdl", "tb_cdl"]
     export_dirs = cdl_include_dirs + [ src_dir ]
     modules = []
+    modules += [ CdlModule("analyzer_simple") ]
     modules += [ CdlModule("apb_target_analyzer") ]
     # modules += [ CdlModule("apb_target_simple_analyzer") ]
     modules += [ CdlModule("apb_target_analyzer_ctl") ]
@@ -51,6 +52,8 @@ class ApbTargetModules(cdl_desc.Modules):
     modules += [ CdlModule("tb_apb_target_analyzer_src",
                             src_dir=tb_src_dir) ]
     modules += [ CdlModule("tb_analyzer",
+                            src_dir=tb_src_dir) ]
+    modules += [ CdlModule("tb_analyzer_simple",
                             src_dir=tb_src_dir) ]
     modules += [ CdlModule("tb_analyzer_dbg",
                             src_dir=tb_src_dir) ]
