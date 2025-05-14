@@ -19,6 +19,9 @@ typedef enum [4] {
     apb_address_alu_op      = 2,
     apb_address_resp_data   = 3,
     apb_address_pop_fifo_0   = 4,
+    apb_address_pop_fifo_1   = 5,
+    apb_address_pop_fifo_2   = 6,
+    apb_address_pop_fifo_3   = 7,
     apb_address_fifo_status_0 = 8,
     apb_address_fifo_status_1 = 9,
     apb_address_fifo_status_2 = 10,
@@ -174,6 +177,15 @@ This module provides trace access for logic analyzers from APB.
         case apb_address_pop_fifo_0: {
             apb_state.access <= apb_request.pwrite ? access_none: access_pop_fifo;
         }
+        case apb_address_pop_fifo_1: {
+            apb_state.access <= apb_request.pwrite ? access_none: access_pop_fifo;
+        }
+        case apb_address_pop_fifo_2: {
+            apb_state.access <= apb_request.pwrite ? access_none: access_pop_fifo;
+        }
+        case apb_address_pop_fifo_3: {
+            apb_state.access <= apb_request.pwrite ? access_none: access_pop_fifo;
+        }
         case apb_address_fifo_status_0: {
             apb_state.access <= apb_request.pwrite ? access_none: access_read_fifo_0;
         }
@@ -231,7 +243,12 @@ This module provides trace access for logic analyzers from APB.
             apb_state.req.write_enable <= 0;
             apb_state.req.address_op <= atr_address_op_pop;
             apb_state.trace_access_valid <= 0;
-            apb_state.trace_access_valid[0] <= 1;
+            full_switch (apb_request.paddr[2;0]) {
+            case 2b00: {apb_state.trace_access_valid[0] <= 1;}
+            case 2b01: {apb_state.trace_access_valid[1] <= 1;}
+            case 2b10: {apb_state.trace_access_valid[2] <= 1;}
+            case 2b11: {apb_state.trace_access_valid[3] <= 1;}
+            }
             if (!apb_state.access_not_first_cycle) {
                 apb_state.op_pending <= 1;
             }

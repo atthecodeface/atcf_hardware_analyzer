@@ -179,10 +179,13 @@ class TraceAccCsr(Csr):
 #c TraceAccessAddressMap
 class AnalyzerTraceAccessAddressMap(Map):
     _map = [ MapCsr(reg=0, name="address", brief="add", csr=TraceAccCsr, doc="address"),
-             MapCsr(reg=1, name="data", brief="add", csr=TraceAccCsr, doc="address"),
-             MapCsr(reg=2, name="alu_op", brief="add", csr=TraceAccCsr, doc="address"),
-             MapCsr(reg=3, name="resp_data", brief="add", csr=TraceAccCsr, doc="address"),
+             MapCsr(reg=1, name="data", brief="data", csr=TraceAccCsr, doc="data"),
+             MapCsr(reg=2, name="alu_op", brief="alu", csr=TraceAccCsr, doc="alu operations"),
+             MapCsr(reg=3, name="resp_data", brief="add", csr=TraceAccCsr, doc="last response data"),
              MapCsr(reg=4, name="pop_fifo_0", brief="pop0", csr=TraceAccCsr, doc="Pop fifo 0"),
+             MapCsr(reg=5, name="pop_fifo_1", brief="pop1", csr=TraceAccCsr, doc="Pop fifo 1"),
+             MapCsr(reg=6, name="pop_fifo_2", brief="pop2", csr=TraceAccCsr, doc="Pop fifo 2"),
+             MapCsr(reg=7, name="pop_fifo_3", brief="pop3", csr=TraceAccCsr, doc="Pop fifo 3"),
              MapCsr(reg=8, name="fifo_status_0", brief="fifo0", csr=TraceAccCsr, doc="Fifo status"),
              MapCsr(reg=9, name="fifo_status_1", brief="fifo1", csr=TraceAccCsr, doc="Fifo status"),
              MapCsr(reg=10, name="fifo_status_2", brief="fifo2", csr=TraceAccCsr, doc="Fifo status"),
