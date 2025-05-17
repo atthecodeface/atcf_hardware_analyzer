@@ -29,8 +29,8 @@ from cdl.sim     import HardwareThDut
 from cdl.sim     import TestCase
 from typing import Optional
 
-#c ApbAnalyzerTest_Base
-class ApbAnalyzerTest_Base(ThExecFile):
+#c ApbAnalyzerSrcTest_Base
+class ApbAnalyzerSrcTest_Base(ThExecFile):
     
     th_name = "Apb target analyzer source test harness"
     tgt_mux_sel = 0
@@ -134,8 +134,8 @@ class ApbAnalyzerTest_Base(ThExecFile):
         pass
     pass
 
-#c ApbAnalyzerTest_0
-class ApbAnalyzerTest_0(ApbAnalyzerTest_Base):
+#c ApbAnalyzerSrcTest_0
+class ApbAnalyzerSrcTest_0(ApbAnalyzerSrcTest_Base):
     # Select the id
     tgt_mux_sel = 8
     #f run
@@ -155,40 +155,40 @@ class ApbAnalyzerTest_0(ApbAnalyzerTest_Base):
         pass
     pass
 
-#c ApbAnalyzerTest_1
-class ApbAnalyzerTest_1(ApbAnalyzerTest_Base):
+#c ApbAnalyzerSrcTest_1
+class ApbAnalyzerSrcTest_1(ApbAnalyzerSrcTest_Base):
     test_filter = FilterAcceptAll()
     num_data = 50
     src = AnalyzerSrc()
     timeout = 200
     pass
 
-#c ApbAnalyzerTest_2
-class ApbAnalyzerTest_2(ApbAnalyzerTest_Base):
+#c ApbAnalyzerSrcTest_2
+class ApbAnalyzerSrcTest_2(ApbAnalyzerSrcTest_Base):
     test_filter = FilterAcceptAll()
     num_data = 50
     src = AnalyzerSrc([1,2,3,4])
     timeout = 200
     pass
 
-#c ApbAnalyzerTest_3
-class ApbAnalyzerTest_3(ApbAnalyzerTest_Base):
+#c ApbAnalyzerSrcTest_3
+class ApbAnalyzerSrcTest_3(ApbAnalyzerSrcTest_Base):
     test_filter = FilterChanging()
     num_data = 50
     src = AnalyzerSrc([1,2,3,4])
     timeout = 200
     pass
 
-#c ApbAnalyzerTest_4
-class ApbAnalyzerTest_4(ApbAnalyzerTest_Base):
+#c ApbAnalyzerSrcTest_4
+class ApbAnalyzerSrcTest_4(ApbAnalyzerSrcTest_Base):
     test_filter = Filter((3,0,0,0), (1,0,0,0), (0,6,0,0))
     num_data = 50
     src = AnalyzerSrc([1,2,3,4])
     timeout = 300
     pass
 
-#c ApbAnalyzerTest_5
-class ApbAnalyzerTest_5(ApbAnalyzerTest_Base):
+#c ApbAnalyzerSrcTest_5
+class ApbAnalyzerSrcTest_5(ApbAnalyzerSrcTest_Base):
     test_filter = Filter((1,0,0,0), (1,0,0,0), None, (12,0,0,0))
     num_data = 50
     src = AnalyzerSrc([1,2,3,4])
@@ -196,8 +196,8 @@ class ApbAnalyzerTest_5(ApbAnalyzerTest_Base):
     pass
 
 #a Hardware and test instantiation
-#c ApbAnalyzerHardware
-class ApbAnalyzerHardware(HardwareThDut):
+#c ApbAnalyzerSrcHardware
+class ApbAnalyzerSrcHardware(HardwareThDut):
     clock_desc = [("clk",(0,2,2)),
     ]
     reset_desc = {"name":"reset_n", "init_value":0, "wait":5}
@@ -213,15 +213,15 @@ class ApbAnalyzerHardware(HardwareThDut):
                 }
     pass
 
-#c TestApbAnalyzer
-class TestApbAnalyzer(TestCase):
-    hw = ApbAnalyzerHardware
-    _tests = {"0": (ApbAnalyzerTest_0, 1*1000, {}),
-              "1": (ApbAnalyzerTest_1, 2*1000, {}),
-              "2": (ApbAnalyzerTest_2, 2*1000, {}),
-              "3": (ApbAnalyzerTest_3, 2*1000, {}),
-              "4": (ApbAnalyzerTest_4, 2*1000, {}),
-              "5": (ApbAnalyzerTest_5, 2*1000, {}),
-              "smoke": (ApbAnalyzerTest_1, 2*1000, {}),
+#c TestApbAnalyzerSrc
+class TestApbAnalyzerSrc(TestCase):
+    hw = ApbAnalyzerSrcHardware
+    _tests = {"0": (ApbAnalyzerSrcTest_0, 1*1000, {}),
+              "1": (ApbAnalyzerSrcTest_1, 2*1000, {}),
+              "2": (ApbAnalyzerSrcTest_2, 2*1000, {}),
+              "3": (ApbAnalyzerSrcTest_3, 2*1000, {}),
+              "4": (ApbAnalyzerSrcTest_4, 2*1000, {}),
+              "5": (ApbAnalyzerSrcTest_5, 2*1000, {}),
+              "smoke": (ApbAnalyzerSrcTest_1, 2*1000, {}),
     }
 

@@ -49,7 +49,9 @@ typedef struct {
 typedef struct {
     t_access access;
     bit[2] access_data;
+    bit[8] count;
     t_tgt_mode tgt_mode;
+    bit tgt_valid_if_count_nz;
     bit tgt_valid;
 } t_apb_state;
 
@@ -116,9 +118,14 @@ module tb_apb_target_analyzer_src( clock clk,
 
         /*b Decode the actl_op
          */
+        if ((apb_state.count != 0) && apb_state.tgt_valid) {
+            apb_state.count <= apb_state.count - 1;
+        }
         part_switch (apb_state.access) {
         case access_write_config: {
             apb_state.tgt_mode <= apb_request.pwdata[4;0];
+            apb_state.tgt_valid_if_count_nz <= apb_request.pwdata[4];
+            apb_state.count <= apb_request.pwdata[8;8];
             data[0].op_mode <= apb_request.pwdata[3;16];
             data[1].op_mode <= apb_request.pwdata[3;20];
             data[2].op_mode <= apb_request.pwdata[3;24];
@@ -152,6 +159,9 @@ module tb_apb_target_analyzer_src( clock clk,
         part_switch (apb_state.tgt_mode) {
             case tgt_mode_enabled: {
                 apb_state.tgt_valid <= 1;
+                if (apb_state.tgt_valid_if_count_nz && (apb_state.count == 0)) {
+                    apb_state.tgt_valid <= 0;
+                }
             }
         }
         analyzer_data.valid = apb_state.tgt_valid;

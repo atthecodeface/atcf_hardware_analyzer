@@ -30,8 +30,8 @@ from cdl.sim     import HardwareThDut
 from cdl.sim     import TestCase
 from typing import Optional
 
-#c ApbAnalyzerTest_Base
-class ApbAnalyzerTest_Base(ThExecFile):
+#c ApbAnalyzerTraceTest_Base
+class ApbAnalyzerTraceTest_Base(ThExecFile):
     
     th_name = "Apb target analyzer trigger test harness"
     tgt_mux_sel = 0
@@ -154,13 +154,13 @@ class ApbAnalyzerTest_Base(ThExecFile):
         pass
     pass
 
-#c ApbAnalyzerTest_0
-class ApbAnalyzerTest_0(ApbAnalyzerTest_Base):
+#c ApbAnalyzerTraceTest_0
+class ApbAnalyzerTraceTest_0(ApbAnalyzerTraceTest_Base):
     pass
 
 #a Hardware and test instantiation
-#c ApbAnalyzerHardware
-class ApbAnalyzerHardware(HardwareThDut):
+#c ApbAnalyzerTraceHardware
+class ApbAnalyzerTraceHardware(HardwareThDut):
     clock_desc = [("clk",(0,2,2)),
     ]
     reset_desc = {"name":"reset_n", "init_value":0, "wait":5}
@@ -177,10 +177,10 @@ class ApbAnalyzerHardware(HardwareThDut):
                 }
     pass
 
-#c TestApbAnalyzer
-class TestApbAnalyzer(TestCase):
-    hw = ApbAnalyzerHardware
-    _tests = {"0": (ApbAnalyzerTest_0, 2*1000, {}),
-              "smoke": (ApbAnalyzerTest_0, 80*1000, {}),
+#c TestApbAnalyzerTrace
+class TestApbAnalyzerTrace(TestCase):
+    hw = ApbAnalyzerTraceHardware
+    _tests = {"0": (ApbAnalyzerTraceTest_0, 2*1000, {}),
+              "smoke": (ApbAnalyzerTraceTest_0, 80*1000, {}),
     }
 

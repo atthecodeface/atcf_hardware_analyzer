@@ -86,6 +86,20 @@ class SimpleByteMatch:
     mask = 0
     value = 0
     cond_sel = SimpleByteMatchCond.MATCH
+    def with_byte_sel(self, byte_sel):
+        self.byte_sel = byte_sel
+        return self
+    def with_match_value(self, value, mask=0xff):
+        self.mask = mask
+        self.value = value
+        return self
+    def with_ignore_valid(self, ignore_valid=True):
+        self.ignore_valid = ignore_valid
+        return self
+    def with_any_set(self, bits):
+        self.mask &= ~bits
+        self.value |= bits
+        return self
     def reset(self):
         self.one_must_be_nonzero = self.value & ~self.mask
         self.must_match_value = self.value & self.mask
@@ -143,9 +157,9 @@ class TriggerSimple:
 
 
     """
-    data_src = (DataSrc.D0, DataSrc.D1)
-    match_data_src = (MatchDataSrc.DATA, MatchDataSrc.DATA)
-    byte_match = (SimpleByteMatch(), SimpleByteMatch(), SimpleByteMatch(), SimpleByteMatch())
+    data_src = [DataSrc.D0, DataSrc.D1]
+    match_data_src = [MatchDataSrc.DATA, MatchDataSrc.DATA]
+    byte_match = [SimpleByteMatch(), SimpleByteMatch(), SimpleByteMatch(), SimpleByteMatch()]
     actions = [Actions(), Actions(), Actions(), Actions(), Actions(), Actions(), Actions(), Actions()]
     action_sets = [0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0]
     trace_data_sources = [TraceDataSrc.D0, TraceDataSrc.D1, TraceDataSrc.D2, TraceDataSrc.D3 ]

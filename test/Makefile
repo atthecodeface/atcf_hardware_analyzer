@@ -4,7 +4,7 @@ CDL_REGRESS = ${CDL_ROOT}/libexec/cdl/cdl_regress.py
 .PHONY:regression regression_batch regression_python
 .PHONY:smoke smoke_batch smoke_python
 
-# $ WAVES=--waves=dut SMOKE_OPTIONS=--only-tests='0' SMOKE_TESTS=test_apb_analyzer grip make repo.atcf_hardware_analyzer.smoke_test
+# $ WAVES=--waves=dut SMOKE_OPTIONS=--only-tests='smoke' SMOKE_TESTS=test_apb_analyzer grip make repo.atcf_hardware_analyzer.smoke_test
 WAVES ?=
 
 SMOKE_OPTIONS ?= --only-tests 'smoke'

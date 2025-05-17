@@ -28,8 +28,8 @@ from cdl.sim     import HardwareThDut
 from cdl.sim     import TestCase
 from typing import Optional
 
-#c ApbAnalyzerTest_Base
-class ApbAnalyzerTest_Base(ThExecFile):
+#c ApbAnalyzerFilterTest_Base
+class ApbAnalyzerFilterTest_Base(ThExecFile):
     th_name = "Utils dprintf test harness"
     sram_inter_delay = 0
     # This can be set at initialization time to reduce the number of explicit test cases
@@ -106,13 +106,13 @@ class ApbAnalyzerTest_Base(ThExecFile):
         pass
     pass
 
-#c ApbAnalyzerTest_0
-class ApbAnalyzerTest_0(ApbAnalyzerTest_Base):
+#c ApbAnalyzerFilterTest_0
+class ApbAnalyzerFilterTest_0(ApbAnalyzerFilterTest_Base):
     pass
 
 #a Hardware and test instantiation
-#c ApbAnalyzerHardware
-class ApbAnalyzerHardware(HardwareThDut):
+#c ApbAnalyzerFilterHardware
+class ApbAnalyzerFilterHardware(HardwareThDut):
     clock_desc = [("clk",(0,2,2)),
     ]
     reset_desc = {"name":"reset_n", "init_value":0, "wait":5}
@@ -128,9 +128,9 @@ class ApbAnalyzerHardware(HardwareThDut):
                 }
     pass
 
-#c TestApbAnalyzer
-class TestApbAnalyzer(TestCase):
-    hw = ApbAnalyzerHardware
-    _tests = {"0": (ApbAnalyzerTest_0, 2*1000, {}),
+#c TestApbAnalyzerFilter
+class TestApbAnalyzerFilter(TestCase):
+    hw = ApbAnalyzerFilterHardware
+    _tests = {"0": (ApbAnalyzerFilterTest_0, 2*1000, {}),
     }
 

@@ -21,7 +21,7 @@ from regress.apb.bfm     import ApbMaster
 from regress.utils import t_dprintf_req_4, t_dprintf_byte, Dprintf, t_dbg_master_request, t_dbg_master_response, DprintfBus, SramAccessBus, SramAccessRead, SramAccessWrite, DbgMaster, DbgMasterMuxScript, DbgMasterSramScript, DbgMasterFifoScript, FifoStatus, t_sram_access_req, t_sram_access_resp
 from regress.analyzer import t_analyzer_data4, t_analyzer_trace_op4
 from regress.analyzer import TbApbAddressMap, Filter, FilterAcceptAll, FilterChanging, TraceCfg
-from regress.analyzer import AnalyzerSrc, TriggerSimple
+from regress.analyzer import AnalyzerSrc, TriggerSimple, SimpleByteMatch
 
 from cdl.utils   import csr
 from cdl.sim     import ThExecFile, LogEventParser
@@ -38,7 +38,8 @@ class ApbAnalyzerTest_Base(ThExecFile):
     test_filter = Filter((1,0,0,0), (1,0,0,0), None, None)
     test_trace = TraceCfg()
     num_triggers = 50
-    src = AnalyzerSrc([1,2,3,4])
+    # Set mode 1 with 100 valid
+    src = AnalyzerSrc(data=[1,2,3,4], data_cfg=[1,1,1,1], count=10, tgt_valid_if_count_nz=1)
     timeout = 300
     trigger = TriggerSimple(
         data_srcs = ("d0", "d1"),
@@ -49,6 +50,8 @@ class ApbAnalyzerTest_Base(ThExecFile):
     trigger.action_sets[15] = 1
     trigger.actions[1].record_time = True
     trigger.actions[1].capture_data = (True, True)
+    expected = [3,5,7,9]
+    expected_fs = (0,1)
 
     # This can be set at initialization time to reduce the number of explicit test cases
     def __init__(self, **kwargs) -> None:
@@ -88,8 +91,10 @@ class ApbAnalyzerTest_Base(ThExecFile):
         writes += self.trigger.apb_writes_control(self.apb_map.analyzer_cfg, enable=1, clear=1, start=0, stop=0, timer_divide=0)
         writes += self.trigger.apb_writes_control(self.apb_map.analyzer_cfg, enable=1, clear=0, start=0, stop=0, timer_divide=0)
         writes += self.trigger.apb_writes_control(self.apb_map.analyzer_cfg, enable=1, clear=0, start=1, stop=0, timer_divide=0)
+        writes += self.trigger.apb_writes_control(self.apb_map.analyzer_cfg, enable=1, clear=0, start=0, stop=0, timer_divide=0)
         writes += self.test_filter.apb_writes(self.apb_map.analyzer_cfg)
         writes += self.test_trace.apb_writes(self.apb_map.analyzer_cfg)
+        # Enable the source last!
         writes += self.src.apb_writes(self.apb_map.analyzer_src)
 
         self.verbose.message(f"Clear control")
@@ -101,28 +106,27 @@ class ApbAnalyzerTest_Base(ThExecFile):
 
         self.bfm_wait(200)
 
+        stop_writes = self.trigger.apb_writes_control(self.apb_map.analyzer_cfg, enable=1, clear=0, start=0, stop=1, timer_divide=0)
+        stop_writes += self.trigger.apb_writes_control(self.apb_map.analyzer_cfg, enable=0, clear=0, start=0, stop=0, timer_divide=0)
+        for (r,wd) in stop_writes:
+            self.apb.reg(r).write(wd)
+            pass
+
+        
         fs0 = self.apb.reg(self.apb_map.analyzer_trace.fifo_status_0).read()
         self.verbose.info(f"Read fifo status 0 {fs0} (using as FIFO so not empty)")
         fs1 = self.apb.reg(self.apb_map.analyzer_trace.fifo_status_1).read()
         self.verbose.info(f"Read fifo status 1 {fs1} (using as histogram so empty)")
 
-        self.compare_expected("Fifo 0 should be not empty",fs0&1, 0)
-        self.compare_expected("Fifo 1 should be empty",fs1, 1)
+        self.compare_expected("Fifo 0 status",self.expected_fs[0],fs0)
+        self.compare_expected("Fifo 1 status",self.expected_fs[1],fs1)
 
-        d0 = self.apb.reg(self.apb_map.analyzer_trace.pop0).read()
-        self.compare_expected("Data captured",d0,3)
+        for e in self.expected:
+            d0 = self.apb.reg(self.apb_map.analyzer_trace.pop0).read()
+            self.compare_expected("Data captured",e,d0)
+            pass
 
-        d0 = self.apb.reg(self.apb_map.analyzer_trace.pop0).read()
-        self.compare_expected("Data captured",d0,5)
-        self.verbose.info(f"First data captured {d0}")
-        d0 = self.apb.reg(self.apb_map.analyzer_trace.pop0).read()
-        self.compare_expected("Data captured",d0,7)
-        self.verbose.info(f"Second data captured {d0}")
-        d0 = self.apb.reg(self.apb_map.analyzer_trace.pop0).read()
-        self.compare_expected("Data captured",d0,9)
-
-
-        self.bfm_wait_until_test_done(100)
+        self.bfm_wait_until_test_done(200)
         self.die_event.fire()
         self.bfm_wait(10)
         pass
@@ -134,6 +138,86 @@ class ApbAnalyzerTest_Base(ThExecFile):
 
 #c ApbAnalyzerTest_0
 class ApbAnalyzerTest_0(ApbAnalyzerTest_Base):
+    th_name = "Dbg script analyzer trigger test harness"
+    tgt_mux_sel = 0
+    test_filter = Filter((1,0,0,0), (1,0,0,0), None, None)
+    test_trace = TraceCfg()
+    num_triggers = 50
+    timeout = 300
+    trigger = TriggerSimple(
+        data_srcs = ("d0", "d1"),
+        trace_data_srcs=["d0", "d1"],
+        trace_ops=["push", "write"],
+    )
+    trigger.byte_match[0].value = 0xff
+    trigger.action_sets[15] = 1
+    trigger.actions[1].record_time = True
+    trigger.actions[1].capture_data = (True, True)
+    expected = [3,5,7,9]
+    pass
+
+#c ApbAnalyzerTest_1
+class ApbAnalyzerTest_1(ApbAnalyzerTest_Base):
+    th_name = "Testing continuous unstopped capture"
+    tgt_mux_sel = 0
+    test_filter = Filter(None, None, None, None)
+    test_trace = TraceCfg()
+    num_triggers = 50
+    timeout = 300
+    trigger = TriggerSimple(
+        data_srcs = ("d0", "d1"),
+        trace_data_srcs=["d0", "d1"],
+        trace_ops=["push", "write"],
+    )
+    trigger.byte_match[0].value = 0xff
+    trigger.action_sets[15] = 1
+    trigger.actions[1].record_time = True
+    trigger.actions[1].capture_data = (True, True)
+    expected = [2,3,4,5,6,7,8,9]
+    pass
+
+#c ApbAnalyzerTest_2
+class ApbAnalyzerTest_2(ApbAnalyzerTest_Base):
+    th_name = "Testing continuous capture with halt"
+    tgt_mux_sel = 0
+    test_filter = Filter(None, None, None, None)
+    test_trace = TraceCfg()
+    num_triggers = 50
+    timeout = 300
+    trigger = TriggerSimple(
+        data_srcs = ("d0", "d1"),
+        trace_data_srcs=["d0", "d1"],
+        trace_ops=["push", "write"],
+    )
+    trigger.byte_match[0] = SimpleByteMatch().with_byte_sel(0)
+    trigger.action_sets[15] = 1
+    trigger.actions[1].record_time = True
+    trigger.actions[1].halt_capture = True
+    trigger.actions[1].capture_data = (True, True)
+    expected = [5]
+    expected_fs = ((4*1)<<4,1)
+    pass
+
+#c ApbAnalyzerTest_3
+class ApbAnalyzerTest_3(ApbAnalyzerTest_Base):
+    th_name = "Testing one in 16 capture with halt"
+    tgt_mux_sel = 0
+    test_filter = Filter(None, None, None, None)
+    test_trace = TraceCfg()
+    num_triggers = 50
+    timeout = 300
+    trigger = TriggerSimple(
+        data_srcs = ("d0", "d1"),
+        trace_data_srcs=["d0", "d1"],
+        trace_ops=["push", "write"],
+    )
+    trigger.byte_match[0] = SimpleByteMatch().with_byte_sel(0).with_match_value(mask=0xf, value = 5)
+    trigger.action_sets[15] = 1
+    trigger.actions[1].record_time = True
+    trigger.actions[1].halt_capture = True
+    trigger.actions[1].capture_data = (True, True)
+    expected = [5]
+    expected_fs = ((4*1)<<4,1)
     pass
 
 #a Hardware and test instantiation
@@ -156,6 +240,7 @@ class ApbAnalyzerHardware(HardwareThDut):
 class TestApbAnalyzer(TestCase):
     hw = ApbAnalyzerHardware
     _tests = {"0": (ApbAnalyzerTest_0, 2*1000, {}),
-              "smoke": (ApbAnalyzerTest_0, 2*1000, {}),
+              "1": (ApbAnalyzerTest_1, 2*1000, {}),
+              "smoke": (ApbAnalyzerTest_2, 2*1000, {}),
     }
 

@@ -475,7 +475,7 @@ So some configurations:
             }
         }
         
-        if (!trigger_cfg.enable || trace_op.op_valid!=0) {
+        if (!trigger_cfg.enable) {
             trace_op <= trace_op;
             trace_op.op_valid <= {*=0};
             data_out[0] <= data_out[0];
